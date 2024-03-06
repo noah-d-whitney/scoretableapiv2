@@ -1,10 +1,11 @@
 package main
 
 import (
+	"ScoreTableApi/internal/data"
+	"ScoreTableApi/internal/jsonlog"
 	"context"
 	"database/sql"
 	"flag"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,8 +23,9 @@ type config struct {
 }
 
 type application struct {
-	logger *log.Logger
+	logger *jsonlog.Logger
 	config config
+	models data.Models
 }
 
 func main() {
@@ -34,9 +36,19 @@ func main() {
 	flag.StringVar(&cfg.db.dsn, "dsn", "postgres://scoretable:Noah2002ndw@localhost/scoretable",
 		"DB connection string")
 
+	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
+
+	db, err := openDB(cfg)
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
+	defer db.Close()
+	logger.PrintInfo("database connection pool established", nil)
+
 	app := &application{
-		logger: log.New(os.Stdout, "", 0),
+		logger: logger,
 		config: cfg,
+		models: data.NewModels(db),
 	}
 
 	srv := &http.Server{
@@ -44,7 +56,7 @@ func main() {
 		Handler: app.routes(),
 	}
 
-	err := srv.ListenAndServe()
+	err = srv.ListenAndServe()
 	app.logger.Fatal(err)
 }
 

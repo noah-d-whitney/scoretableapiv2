@@ -1,6 +1,7 @@
-package models
+package data
 
 import (
+	"ScoreTableApi/internal/validator"
 	"context"
 	"database/sql"
 	"time"
@@ -37,4 +38,17 @@ func (m *PlayerModel) Insert(player *Player) error {
 
 	return m.db.QueryRowContext(ctx, stmt, args...).Scan(&player.ID, &player.CreatedAt,
 		&player.Version, &player.IsActive)
+}
+
+func ValidatePlayer(v *validator.Validator, player *Player) {
+	v.Check(player.FirstName != "", "first_name", "must be provided")
+	v.Check(len(player.FirstName) > 1, "first_name", "must be greater than 1 character")
+	v.Check(len(player.FirstName) <= 20, "first_name", "must be 20 character or less")
+
+	v.Check(player.LastName != "", "last_name", "must be provided")
+	v.Check(len(player.LastName) > 1, "last_name", "must be greater than 1 character")
+	v.Check(len(player.LastName) <= 20, "last_name", "must be 20 characters or less")
+
+	v.Check(player.PrefNumber >= 0, "pref_number", "must be 0 or greater")
+	v.Check(player.PrefNumber < 100, "pref_number", "must be less than 100")
 }
