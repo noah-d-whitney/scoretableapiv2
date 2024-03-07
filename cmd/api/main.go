@@ -33,10 +33,13 @@ func main() {
 
 	flag.IntVar(&cfg.port, "port", 8008, "http server port")
 	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
-	flag.StringVar(&cfg.db.dsn, "dsn", "postgres://scoretable:Noah2002ndw@localhost/scoretable",
-		"DB connection string")
+	flag.StringVar(&cfg.db.dsn, "dsn", os.Getenv("SCORETABLE_DSN"), "DB connection string")
 
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
+	logger.PrintInfo("starting scoretable server", map[string]string{
+		"port": strconv.Itoa(cfg.port),
+		"env":  cfg.env,
+	})
 
 	db, err := openDB(cfg)
 	if err != nil {
@@ -57,7 +60,7 @@ func main() {
 	}
 
 	err = srv.ListenAndServe()
-	app.logger.Fatal(err)
+	app.logger.PrintFatal(err, nil)
 }
 
 func openDB(cfg config) (*sql.DB, error) {

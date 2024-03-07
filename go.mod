@@ -2,4 +2,7 @@ module ScoreTableApi
 
 go 1.22.0
 
-require github.com/lib/pq v1.10.2 // indirect
+require (
+	github.com/go-chi/chi/v5 v5.0.12 // indirect
+	github.com/lib/pq v1.10.2 // indirect
+)

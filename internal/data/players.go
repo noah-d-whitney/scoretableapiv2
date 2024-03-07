@@ -4,6 +4,7 @@ import (
 	"ScoreTableApi/internal/validator"
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -38,6 +39,41 @@ func (m *PlayerModel) Insert(player *Player) error {
 
 	return m.db.QueryRowContext(ctx, stmt, args...).Scan(&player.ID, &player.CreatedAt,
 		&player.Version, &player.IsActive)
+}
+
+func (m *PlayerModel) Get(id int64) (*Player, error) {
+	if id < 1 {
+		return nil, ErrRecordNotFound
+	}
+
+	stmt := `
+		SELECT id, first_name, last_name, pref_number, created_at, version, is_active
+		FROM players
+		WHERE id = $1`
+
+	var player Player
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.db.QueryRowContext(ctx, stmt, id).Scan(
+		&player.ID,
+		&player.FirstName,
+		&player.LastName,
+		&player.PrefNumber,
+		&player.CreatedAt,
+		&player.Version,
+		&player.IsActive,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return &player, nil
 }
 
 func ValidatePlayer(v *validator.Validator, player *Player) {
