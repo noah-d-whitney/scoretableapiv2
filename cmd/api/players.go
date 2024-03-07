@@ -99,21 +99,21 @@ func (app *application) DeletePlayer(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Name     string
-		Page     int
-		PageSize int
-		Sort     string
+		Name string
+		data.Filters
 	}
 
 	v := validator.New()
 	qs := r.URL.Query()
 
 	input.Name = app.readString(qs, "name", "")
-	input.Page = app.readInt(qs, "page", 1, v)
-	input.PageSize = app.readInt(qs, "page_size", 5, v)
-	input.Sort = app.readString(qs, "sort", "id")
+	input.Filters.Page = app.readInt(qs, "page", 1, v)
+	input.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
+	input.Filters.Sort = app.readString(qs, "sort", "id")
+	input.Filters.SortSafeList = []string{"id", "first_name", "last_name", "pref_number", "-id",
+		"-first_name", "-last_name", "-pref_number"}
 
-	if !v.Valid() {
+	if data.ValidateFilters(v, input.Filters); !v.Valid() {
 		app.failedValidationResponse(w, r, v.Errors)
 		return
 	}
