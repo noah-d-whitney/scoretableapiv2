@@ -76,9 +76,47 @@ func (m *PlayerModel) Get(id int64) (*Player, error) {
 	return &player, nil
 }
 
-func (m *PlayerModel) GetAll(name string) {
+func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, error) {
+	stmt := `
+		SELECT id, first_name, last_name, pref_number, created_at, version, is_active
+		FROM players
+		ORDER BY id`
 
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	rows, err := m.db.QueryContext(ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var players []*Player
+	for rows.Next() {
+		var player Player
+		err := rows.Scan(
+			&player.ID,
+			&player.FirstName,
+			&player.LastName,
+			&player.PrefNumber,
+			&player.CreatedAt,
+			&player.Version,
+			&player.IsActive,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		players = append(players, &player)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return players, nil
 }
+
 func (m *PlayerModel) Delete(id int64) error {
 	if id < 1 {
 		return ErrRecordNotFound

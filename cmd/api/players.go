@@ -118,5 +118,14 @@ func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, "%+v\n", input)
+	players, err := app.models.Players.GetAll(input.Name, input.Filters)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"players": players}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
 }
