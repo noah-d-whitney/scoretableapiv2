@@ -76,6 +76,9 @@ func (m *PlayerModel) Get(id int64) (*Player, error) {
 	return &player, nil
 }
 
+func (m *PlayerModel) GetAll(name string) {
+
+}
 func (m *PlayerModel) Delete(id int64) error {
 	if id < 1 {
 		return ErrRecordNotFound
