@@ -80,18 +80,19 @@ func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, error) {
 	stmt := `
 		SELECT id, first_name, last_name, pref_number, created_at, version, is_active
 		FROM players
+		WHERE (lower(first_name) = lower($1) OR lower(last_name) = lower($1) OR $1 = '')
 		ORDER BY id`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	rows, err := m.db.QueryContext(ctx, stmt)
+	rows, err := m.db.QueryContext(ctx, stmt, name)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var players []*Player
+	players := []*Player{}
 	for rows.Next() {
 		var player Player
 		err := rows.Scan(
