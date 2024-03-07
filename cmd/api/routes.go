@@ -10,6 +10,7 @@ func (app *application) routes() http.Handler {
 	router.NotFound(app.notFoundResponse)
 	router.Post("/v1/player", app.InsertPlayer)
 	router.Get("/v1/player/{id}", app.GetPlayer)
+	router.Delete("/v1/player/{id}", app.DeletePlayer)
 
 	return router
 }
