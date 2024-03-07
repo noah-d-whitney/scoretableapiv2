@@ -3,8 +3,11 @@ package main
 import (
 	"ScoreTableApi/internal/data"
 	"ScoreTableApi/internal/validator"
+	"errors"
 	"fmt"
+	"github.com/go-chi/chi/v5"
 	"net/http"
+	"strconv"
 )
 
 func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +44,30 @@ func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
 	headers := make(http.Header)
 	headers.Set("Location", fmt.Sprintf("/v1/players/%d", player.ID))
 	err = app.writeJSON(w, http.StatusCreated, envelope{"player": player}, headers)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
+
+func (app *application) GetPlayer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		app.notFoundResponse(w, r)
+		return
+	}
+
+	player, err := app.models.Players.Get(id)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"player": player}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 	}
