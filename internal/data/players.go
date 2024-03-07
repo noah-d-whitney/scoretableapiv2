@@ -76,6 +76,35 @@ func (m *PlayerModel) Get(id int64) (*Player, error) {
 	return &player, nil
 }
 
+func (m *PlayerModel) Delete(id int64) error {
+	if id < 1 {
+		return ErrRecordNotFound
+	}
+
+	stmt := `
+		DELETE FROM players
+		WHERE id = $1`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	result, err := m.db.ExecContext(ctx, stmt, id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrRecordNotFound
+	}
+
+	return nil
+}
+
 func ValidatePlayer(v *validator.Validator, player *Player) {
 	v.Check(player.FirstName != "", "first_name", "must be provided")
 	v.Check(len(player.FirstName) > 1, "first_name", "must be greater than 1 character")
