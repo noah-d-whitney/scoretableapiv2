@@ -18,6 +18,9 @@ func (app *application) routes() http.Handler {
 	// Healthcheck
 	router.Get("/v1/healthcheck", app.HealthCheck)
 
+	// User endpoints
+	router.Post("/v1/user", app.RegisterUser)
+
 	// Player endpoints
 	router.Post("/v1/player", app.InsertPlayer)
 	router.Get("/v1/player/{id}", app.GetPlayer)
