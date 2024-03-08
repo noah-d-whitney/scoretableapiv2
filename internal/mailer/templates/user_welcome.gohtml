@@ -3,7 +3,14 @@
 {{define "plainBody"}}
 Hi,
 
-Thanks for signing up for a ScoreTable account.
+Thanks for signing up for a ScoreTable account
+
+Please send a request to the `PUT /v1/user/activate` endpoint with the following JSON body to
+activate your account:
+
+{"token":"{{.activationToken}}"}
+
+Please note that this is a one time use token and will expire in 3 days.
 
 For future reference, your user ID is {{.ID}}
 
@@ -20,6 +27,12 @@ ScoreTable Team
     <body>
         <p>Hi,</p>
         <p>Thanks for signing up for a ScoreTable account.</p>
+        <p>
+            Please send a request to the `PUT /v1/user/activate` endpoint with the following JSON
+            body to activate your account:
+        </p>
+        <code>{"token":"{{.activationToken}}"}</code>
+        <p>Please note that this is a one time use token and will expire in 3 days.</p>
         <p>For future reference, your user ID is {{.ID}}</p>
         <p>Thanks,</p>
         <p>ScoreTable Team</p>

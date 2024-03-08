@@ -8,8 +8,9 @@ import (
 func (app *application) routes() http.Handler {
 	router := chi.NewRouter()
 
-	// Router config
+	// Router
 	router.NotFound(app.notFoundResponse)
+	router.MethodNotAllowed(app.methodNotAllowedRequest)
 
 	// Middleware
 	router.Use(app.recoverPanic)
@@ -18,10 +19,11 @@ func (app *application) routes() http.Handler {
 	// Healthcheck
 	router.Get("/v1/healthcheck", app.HealthCheck)
 
-	// User endpoints
+	// User Endpoints
 	router.Post("/v1/user", app.RegisterUser)
+	router.Put("/v1/user/activate", app.ActivateUser)
 
-	// Player endpoints
+	// Player Endpoints
 	router.Post("/v1/player", app.InsertPlayer)
 	router.Get("/v1/player/{id}", app.GetPlayer)
 	router.Get("/v1/player", app.GetAllPlayers)
