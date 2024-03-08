@@ -15,6 +15,9 @@ func (app *application) routes() http.Handler {
 	router.Use(app.recoverPanic)
 	router.Use(app.rateLimit)
 
+	// Healthcheck
+	router.Get("/v1/healthcheck", app.HealthCheck)
+
 	// Player endpoints
 	router.Post("/v1/player", app.InsertPlayer)
 	router.Get("/v1/player/{id}", app.GetPlayer)

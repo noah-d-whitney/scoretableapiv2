@@ -15,9 +15,10 @@ import (
 )
 
 type config struct {
-	port int
-	env  string
-	db   struct {
+	version string
+	port    int
+	env     string
+	db      struct {
 		dsn          string
 		maxOpenConns int
 		maxIdleConns int
@@ -39,6 +40,7 @@ type application struct {
 func main() {
 	var cfg config
 
+	cfg.version = "1.0.0"
 	flag.IntVar(&cfg.port, "port", 8008, "http server port")
 	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
 
@@ -66,6 +68,7 @@ func main() {
 	logger.PrintInfo("database connection pool established", nil)
 
 	app := &application{
+
 		logger: logger,
 		config: cfg,
 		models: data.NewModels(db),
