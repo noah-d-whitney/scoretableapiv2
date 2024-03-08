@@ -1,0 +1,28 @@
+{{define "subject"}}Welcome to ScoreTable!{{end}}
+
+{{define "plainBody"}}
+Hi,
+
+Thanks for signing up for a ScoreTable account.
+
+For future reference, your user ID is {{.ID}}
+
+Thanks,
+ScoreTable Team
+{{end}}
+
+{{define "htmlBody"}}
+<html lang="en">
+    <head>
+        <meta name="viewport" content="width=device-width"/>
+        <meta http-equiv="Content-Type" content="text/html; charset UTF-8"/>
+    </head>
+    <body>
+        <p>Hi,</p>
+        <p>Thanks for signing up for a ScoreTable account.</p>
+        <p>For future reference, your user ID is {{.ID}}</p>
+        <p>Thanks,</p>
+        <p>ScoreTable Team</p>
+    </body>
+</html>
+{{end}}
