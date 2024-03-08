@@ -6,9 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"flag"
-	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -55,10 +53,6 @@ func main() {
 	flag.BoolVar(&cfg.limiter.enabled, "limiter-enabled", true, "Enable rate limiter")
 
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
-	logger.PrintInfo("starting scoretable server", map[string]string{
-		"port": strconv.Itoa(cfg.port),
-		"env":  cfg.env,
-	})
 
 	db, err := openDB(cfg)
 	if err != nil {
@@ -74,13 +68,10 @@ func main() {
 		models: data.NewModels(db),
 	}
 
-	srv := &http.Server{
-		Addr:    ":" + strconv.Itoa(app.config.port),
-		Handler: app.routes(),
+	err = app.serve()
+	if err != nil {
+		logger.PrintFatal(err, nil)
 	}
-
-	err = srv.ListenAndServe()
-	app.logger.PrintFatal(err, nil)
 }
 
 func openDB(cfg config) (*sql.DB, error) {
