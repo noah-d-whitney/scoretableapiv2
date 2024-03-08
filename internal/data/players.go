@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -76,26 +77,34 @@ func (m *PlayerModel) Get(id int64) (*Player, error) {
 	return &player, nil
 }
 
-func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, error) {
-	stmt := `
-		SELECT id, first_name, last_name, pref_number, created_at, version, is_active
+func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, Metadata, error) {
+	stmt := fmt.Sprintf(`
+		SELECT count(*) OVER(), id, first_name, last_name, pref_number, created_at, version, 
+			is_active
 		FROM players
-		WHERE (lower(first_name) = lower($1) OR lower(last_name) = lower($1) OR $1 = '')
-		ORDER BY id`
+		WHERE (to_tsvector('simple', first_name) @@ plainto_tsquery('simple', $1) 
+			OR to_tsvector('simple', last_name) @@ plainto_tsquery('simple', $1)
+			OR $1 = '')
+		ORDER BY %s %s, id ASC
+		LIMIT $2 OFFSET $3`, filters.sortColumn(), filters.sortDirection())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	rows, err := m.db.QueryContext(ctx, stmt, name)
+	args := []any{name, filters.limit(), filters.offset()}
+
+	rows, err := m.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
-		return nil, err
+		return nil, Metadata{}, err
 	}
 	defer rows.Close()
 
+	totalRecords := 0
 	players := []*Player{}
 	for rows.Next() {
 		var player Player
 		err := rows.Scan(
+			&totalRecords,
 			&player.ID,
 			&player.FirstName,
 			&player.LastName,
@@ -105,17 +114,19 @@ func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, error) {
 			&player.IsActive,
 		)
 		if err != nil {
-			return nil, err
+			return nil, Metadata{}, err
 		}
 
 		players = append(players, &player)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, Metadata{}, err
 	}
 
-	return players, nil
+	metadata := calculateMetadata(totalRecords, filters.Page, filters.PageSize)
+
+	return players, metadata, nil
 }
 
 func (m *PlayerModel) Delete(id int64) error {
