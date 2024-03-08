@@ -129,6 +129,38 @@ func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, Metadata,
 	return players, metadata, nil
 }
 
+func (m *PlayerModel) Update(player *Player) error {
+	stmt := `
+		UPDATE players
+		SET first_name = $1, last_name = $2, pref_number = $3, is_active = $4, version = version + 1
+		WHERE id = $5 AND version = $6
+		RETURNING version`
+
+	args := []any{
+		player.FirstName,
+		player.LastName,
+		player.PrefNumber,
+		player.IsActive,
+		player.ID,
+		player.Version,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.db.QueryRowContext(ctx, stmt, args...).Scan(&player.Version)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrEditConflict
+		default:
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (m *PlayerModel) Delete(id int64) error {
 	if id < 1 {
 		return ErrRecordNotFound

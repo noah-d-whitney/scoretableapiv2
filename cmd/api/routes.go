@@ -12,6 +12,7 @@ func (app *application) routes() http.Handler {
 	router.Get("/v1/player/{id}", app.GetPlayer)
 	router.Get("/v1/player", app.GetAllPlayers)
 	router.Delete("/v1/player/{id}", app.DeletePlayer)
+	router.Put("/v1/player/{id}", app.UpdatePlayer)
 
 	return router
 }
