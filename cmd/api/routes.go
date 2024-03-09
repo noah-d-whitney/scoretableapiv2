@@ -15,6 +15,7 @@ func (app *application) routes() http.Handler {
 	// Middleware
 	router.Use(app.recoverPanic)
 	router.Use(app.rateLimit)
+	router.Use(app.authenticate)
 
 	// Healthcheck
 	router.Get("/v1/healthcheck", app.HealthCheck)
