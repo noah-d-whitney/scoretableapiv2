@@ -26,13 +26,23 @@ func (app *application) routes() http.Handler {
 	router.Post("/v1/user/login", app.LoginUser)
 
 	// Player Endpoints
-	router.Group(func(r chi.Router) {
-		r.Use(app.requireActivatedUser)
-		r.Post("/v1/player", app.InsertPlayer)
-		r.Get("/v1/player/{id}", app.GetPlayer)
-		r.Get("/v1/player", app.GetAllPlayers)
-		r.Delete("/v1/player/{id}", app.DeletePlayer)
-		r.Patch("/v1/player/{id}", app.UpdatePlayer)
+	router.Route("/v1/player", func(router chi.Router) {
+		router.Group(func(router chi.Router) {
+			router.Use(func(next http.Handler) http.Handler {
+				return app.requirePermission("players:read", next)
+			})
+			router.Get("/{id}", app.GetPlayer)
+			router.Get("/", app.GetAllPlayers)
+		})
+
+		router.Group(func(router chi.Router) {
+			router.Use(func(next http.Handler) http.Handler {
+				return app.requirePermission("players:write", next)
+			})
+			router.Post("/", app.InsertPlayer)
+			router.Delete("/{id}", app.DeletePlayer)
+			router.Patch("/{id}", app.UpdatePlayer)
+		})
 	})
 
 	return router
