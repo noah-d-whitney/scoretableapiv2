@@ -26,11 +26,14 @@ func (app *application) routes() http.Handler {
 	router.Post("/v1/user/login", app.LoginUser)
 
 	// Player Endpoints
-	router.Post("/v1/player", app.InsertPlayer)
-	router.Get("/v1/player/{id}", app.GetPlayer)
-	router.Get("/v1/player", app.GetAllPlayers)
-	router.Delete("/v1/player/{id}", app.DeletePlayer)
-	router.Patch("/v1/player/{id}", app.UpdatePlayer)
+	router.Group(func(r chi.Router) {
+		r.Use(app.requireActivatedUser)
+		r.Post("/v1/player", app.InsertPlayer)
+		r.Get("/v1/player/{id}", app.GetPlayer)
+		r.Get("/v1/player", app.GetAllPlayers)
+		r.Delete("/v1/player/{id}", app.DeletePlayer)
+		r.Patch("/v1/player/{id}", app.UpdatePlayer)
+	})
 
 	return router
 }
