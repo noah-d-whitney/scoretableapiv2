@@ -22,6 +22,7 @@ func (app *application) routes() http.Handler {
 	// User Endpoints
 	router.Post("/v1/user", app.RegisterUser)
 	router.Put("/v1/user/activate", app.ActivateUser)
+	router.Post("/v1/user/login", app.LoginUser)
 
 	// Player Endpoints
 	router.Post("/v1/player", app.InsertPlayer)
