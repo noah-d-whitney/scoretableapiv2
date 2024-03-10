@@ -14,6 +14,7 @@ func (app *application) routes() http.Handler {
 
 	// Middleware
 	router.Use(app.recoverPanic)
+	router.Use(app.enableCORS)
 	router.Use(app.rateLimit)
 	router.Use(app.authenticate)
 
