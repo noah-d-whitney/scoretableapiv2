@@ -6,8 +6,10 @@ import (
 	"ScoreTableApi/internal/mailer"
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +82,11 @@ func main() {
 
 	// CORS Config
 	flag.Func("cors-trusted-origins", "Trusted CORS origins (space separated)", func(val string) error {
+		origins := strings.Fields(val)
+		if i := slices.Index(origins, "*"); i != -1 {
+			return errors.New("cannot set CORS trusted origin to \"*\" with authorization header" +
+				" in cross-origin requests")
+		}
 		cfg.cors.trustedOrigins = strings.Fields(val)
 		return nil
 	})

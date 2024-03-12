@@ -1,6 +1,7 @@
 package main
 
 import (
+	"expvar"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 )
@@ -20,6 +21,7 @@ func (app *application) routes() http.Handler {
 
 	// Healthcheck
 	router.Get("/v1/healthcheck", app.HealthCheck)
+	router.Method(http.MethodGet, "/v1/metrics", expvar.Handler())
 
 	// User Endpoints
 	router.Post("/v1/user", app.RegisterUser)
