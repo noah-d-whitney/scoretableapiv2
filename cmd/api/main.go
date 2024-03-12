@@ -7,8 +7,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"expvar"
 	"flag"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -102,6 +104,17 @@ func main() {
 	defer db.Close()
 	logger.PrintInfo("database connection pool established", nil)
 
+	expvar.NewString("version").Set(cfg.version)
+	expvar.Publish("goroutines", expvar.Func(func() any {
+		return runtime.NumGoroutine()
+	}))
+	expvar.Publish("database", expvar.Func(func() any {
+		return db.Stats()
+	}))
+	expvar.Publish("timestamp", expvar.Func(func() any {
+		return time.Now().Unix()
+	}))
+
 	app := &application{
 		logger: logger,
 		config: cfg,
@@ -121,6 +134,14 @@ func openDB(cfg config) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	db.SetMaxOpenConns(cfg.db.maxOpenConns)
+	db.SetMaxIdleConns(cfg.db.maxIdleConns)
+	duration, err := time.ParseDuration(cfg.db.maxIdleTime)
+	if err != nil {
+		return nil, err
+	}
+	db.SetConnMaxIdleTime(duration)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

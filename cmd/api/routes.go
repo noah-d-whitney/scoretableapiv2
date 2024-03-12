@@ -14,6 +14,7 @@ func (app *application) routes() http.Handler {
 	router.MethodNotAllowed(app.methodNotAllowedRequest)
 
 	// Middleware
+	router.Use(app.metrics)
 	router.Use(app.recoverPanic)
 	router.Use(app.enableCORS)
 	router.Use(app.rateLimit)
