@@ -3,6 +3,7 @@ module ScoreTableApi
 go 1.22.0
 
 require (
+	github.com/felixge/httpsnoop v1.0.2 // indirect
 	github.com/go-chi/chi/v5 v5.0.12 // indirect
 	github.com/go-mail/mail/v2 v2.3.0 // indirect
 	github.com/lib/pq v1.10.2 // indirect
