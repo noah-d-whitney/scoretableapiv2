@@ -1,0 +1,53 @@
+openapi: 3.0.2
+info:
+  version: '1.0.0'
+  title: ScoreTable.com
+servers:
+  - url: 'http://localhost:8008'
+paths:
+  '/v1/healthcheck':
+    get:
+      summary: Get healthcheck for server
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/healthcheck'
+              example:
+                status: available
+                system_info:
+                  environment: production
+                  version: 1.0.0
+                cors_info:
+                  trusted_origins: example.com | api.example.com
+        '500':
+          description: Server error
+components:
+  schemas:
+    healthcheck:
+      type: object
+      properties:
+        status:
+          description: Server status
+          type: string
+          example: available
+        system_info:
+          type: object
+          properties:
+            environment:
+              description: Server environment
+              type: string
+              example: development
+            version:
+              description: API Version
+              type: string
+              example: 1.0.0
+        cors_info:
+          type: object
+          properties:
+            trusted_origins:
+              description: Trusted CORS origins
+              type: string
+              example: example.com | api.example.com
