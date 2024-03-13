@@ -63,7 +63,7 @@ func main() {
 	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
 
 	// Database Config
-	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("SCORETABLE_DSN"), "DB connection string")
+	flag.StringVar(&cfg.db.dsn, "db-dsn", "", "DB connection string")
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
 	flag.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", 25, "PostgreSQL max idle connections")
 	flag.StringVar(&cfg.db.maxIdleTime, "db-max-idle-time", "15m",
