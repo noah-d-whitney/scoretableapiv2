@@ -49,7 +49,7 @@ func (app *application) routes() http.Handler {
 		})
 	})
 
-	router.Get("/v1/pin", app.CreatePin)
+	router.With(app.requireActivatedUser).Post("/v1/team", app.InsertTeam)
 
 	return router
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"math/rand/v2"
+	"strconv"
 	"time"
 )
 
@@ -17,6 +18,11 @@ type Pin struct {
 	ID    int64
 	Pin   string
 	Scope string
+}
+
+func (p Pin) MarshalJSON() ([]byte, error) {
+	jsonValue := strconv.Quote(p.Pin)
+	return []byte(jsonValue), nil
 }
 
 type PinModel struct {
@@ -63,6 +69,18 @@ func (m *PinModel) New(scope string) (*Pin, error) {
 	}
 
 	return pin, nil
+}
+
+func (m *PinModel) Delete(id int64, scope string) error {
+	stmt := `
+		DELETE FROM pins
+		WHERE id = $1 AND scope = $2`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := m.db.ExecContext(ctx, stmt, id, scope)
+	return err
 }
 
 var (

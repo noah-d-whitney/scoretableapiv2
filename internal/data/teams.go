@@ -1,20 +1,26 @@
 package data
 
 import (
+	"ScoreTableApi/internal/validator"
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
+var (
+	ErrDuplicateTeamName = errors.New("duplicate team name")
+)
+
 type Team struct {
-	ID        int64
-	PinID     string
-	UserID    int64
-	Name      string
-	Size      int
-	CreatedAt time.Time
-	Version   int32
-	IsActive  bool
+	ID        int64     `json:"id"`
+	PinID     Pin       `json:"pin_id"`
+	UserID    int64     `json:"user_id"`
+	Name      string    `json:"name"`
+	Size      int       `json:"size"`
+	CreatedAt time.Time `json:"-"`
+	Version   int32     `json:"-"`
+	IsActive  bool      `json:"is_active"`
 }
 
 type TeamModel struct {
@@ -27,7 +33,7 @@ func (m *TeamModel) Insert(team *Team) error {
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at, version, is_active`
 
-	args := []any{team.PinID, team.UserID, team.Name, team.Size}
+	args := []any{team.PinID.ID, team.UserID, team.Name, team.Size}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -39,8 +45,19 @@ func (m *TeamModel) Insert(team *Team) error {
 		&team.IsActive,
 	)
 	if err != nil {
-		return err
+		switch {
+		case err.Error() == `pq: duplicate key value violates unique constraint`+
+			` "unq_userid_team_name"`:
+			return ErrDuplicateTeamName
+		default:
+			return err
+		}
 	}
 
 	return nil
+}
+
+func ValidateTeam(v *validator.Validator, team *Team) {
+	v.Check(team.Name != "", "name", "must be provided")
+	v.Check(len(team.Name) <= 20, "name", "must be 20 characters or less")
 }
