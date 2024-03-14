@@ -81,23 +81,6 @@ func (m *TeamModel) Delete(teamID, userID int64) error {
 	return nil
 }
 
-func (m *TeamModel) adjustSize(t *Team, dif int, ctx context.Context) error {
-	stmt := `
-		UPDATE teams
-		SET size = size + $1, version = version + 1
-		WHERE id = $2 AND size = $3 AND version = $4
-		RETURNING size, version`
-
-	args := []any{dif, t.ID, t.Size, t.Version}
-
-	err := m.db.QueryRowContext(ctx, stmt, args...).Scan(&t.Size, &t.Version)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (m *TeamModel) AssignPlayers(team *Team) error {
 	insertStmt := fmt.Sprintf(`
 		INSERT INTO teams_players (user_id, team_id, player_id) 

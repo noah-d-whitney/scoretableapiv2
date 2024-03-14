@@ -23,6 +23,8 @@ type PlayerModel struct {
 	db *sql.DB
 }
 
+// TODO Add userid to players table & get by pin
+
 func (m *PlayerModel) Insert(player *Player) error {
 	stmt := `
 		INSERT INTO players (first_name, last_name, pref_number, is_active)

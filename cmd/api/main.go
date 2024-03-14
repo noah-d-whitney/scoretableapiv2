@@ -9,6 +9,7 @@ import (
 	"errors"
 	"expvar"
 	"flag"
+	"fmt"
 	"os"
 	"runtime"
 	"slices"
@@ -93,7 +94,15 @@ func main() {
 		return nil
 	})
 
+	// Version
+	displayVersion := flag.Bool("version", false, "Show API version and immediately exit")
+
 	flag.Parse()
+
+	if *displayVersion {
+		fmt.Printf("Version: %s\n", cfg.version)
+		os.Exit(0)
+	}
 
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
 
