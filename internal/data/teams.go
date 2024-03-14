@@ -5,11 +5,17 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 )
 
 var (
 	ErrDuplicateTeamName = errors.New("duplicate team name")
+	ErrPlayerNotFound    = errors.New("player(s) not found")
+	ErrTeamNotFound      = errors.New("team not found")
+	ErrUserNotFound      = errors.New("user not found")
+	ErrDuplicatePlayer   = errors.New("duplicate player team assignment")
 )
 
 type Team struct {
@@ -21,6 +27,8 @@ type Team struct {
 	CreatedAt time.Time `json:"-"`
 	Version   int32     `json:"-"`
 	IsActive  bool      `json:"is_active"`
+	PlayerIDs []int64   `json:"-"`
+	Players   []*Player `json:"players,omitempty"`
 }
 
 type TeamModel struct {
@@ -55,6 +63,46 @@ func (m *TeamModel) Insert(team *Team) error {
 	}
 
 	return nil
+}
+
+func (m *TeamModel) AssignTeamPlayers(team *Team) error {
+	stmt := fmt.Sprintf(`
+		INSERT INTO teams_players (user_id, team_id, player_id) VALUES %s;`,
+		m.GenerateTeamPlayerValues(team))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := m.db.ExecContext(ctx, stmt)
+	if err != nil {
+		switch {
+		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
+			`constraint "teams_players_team_id_fkey"`:
+			return ErrTeamNotFound
+		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
+			`constraint "teams_players_player_id_fkey"`:
+			return ErrPlayerNotFound
+		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
+			`constraint "teams_players_user_id_fkey"`:
+			return ErrUserNotFound
+		case err.Error() == `pq: duplicate key value violates unique constraint `+
+			`"teams_players_pkey"`:
+			return ErrDuplicatePlayer
+		default:
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *TeamModel) GenerateTeamPlayerValues(t *Team) string {
+	var output []string
+	for _, pid := range t.PlayerIDs {
+		value := fmt.Sprintf("(%d, %d, %d)", t.UserID, t.ID, pid)
+		output = append(output, value)
+	}
+	return strings.Join(output, ", ")
 }
 
 func ValidateTeam(v *validator.Validator, team *Team) {

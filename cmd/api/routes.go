@@ -50,6 +50,7 @@ func (app *application) routes() http.Handler {
 	})
 
 	router.With(app.requireActivatedUser).Post("/v1/team", app.InsertTeam)
+	router.Get("/teamrows", app.GetTeamInsert)
 
 	return router
 }
