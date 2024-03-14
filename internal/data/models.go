@@ -12,6 +12,7 @@ type Models struct {
 	Users       UserModel
 	Players     PlayerModel
 	Tokens      TokenModel
+	Pins        PinModel
 	Permissions PermissionModel
 }
 
@@ -20,6 +21,7 @@ func NewModels(initDb *sql.DB) Models {
 		Users:       UserModel{db: initDb},
 		Players:     PlayerModel{db: initDb},
 		Tokens:      TokenModel{db: initDb},
+		Pins:        PinModel{db: initDb},
 		Permissions: PermissionModel{db: initDb},
 	}
 }

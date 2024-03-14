@@ -49,5 +49,7 @@ func (app *application) routes() http.Handler {
 		})
 	})
 
+	router.Get("/v1/pin", app.CreatePin)
+
 	return router
 }

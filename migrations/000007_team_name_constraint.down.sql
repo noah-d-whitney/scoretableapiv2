@@ -1,0 +1,1 @@
+ALTER TABLE teams DROP CONSTRAINT unq_userid_team_name;
