@@ -4,6 +4,7 @@ import (
 	"ScoreTableApi/internal/data"
 	"ScoreTableApi/internal/validator"
 	"errors"
+	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
@@ -54,6 +55,8 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	headers := make(http.Header)
+	headers.Set("Location", fmt.Sprintf("/v1/team/%s", team.PinID.Pin))
 	err = app.writeJSON(w, http.StatusCreated, envelope{"team": team}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)

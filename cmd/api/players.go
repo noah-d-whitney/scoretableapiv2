@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
-	"strconv"
 )
 
 func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +42,7 @@ func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := make(http.Header)
-	headers.Set("Location", fmt.Sprintf("/v1/players/%d", player.ID))
+	headers.Set("Location", fmt.Sprintf("/v1/player/%d", player.ID))
 	err = app.writeJSON(w, http.StatusCreated, envelope{"player": player}, headers)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
@@ -51,13 +50,10 @@ func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) GetPlayer(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil || id <= 0 {
-		app.notFoundResponse(w, r)
-		return
-	}
+	userID := app.contextGetUser(r).ID
+	pin := chi.URLParam(r, "id")
 
-	player, err := app.models.Players.Get(id)
+	player, err := app.models.Players.Get(userID, pin)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
@@ -75,13 +71,10 @@ func (app *application) GetPlayer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) DeletePlayer(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil || id <= 0 {
-		app.notFoundResponse(w, r)
-		return
-	}
+	userID := app.contextGetUser(r).ID
+	pin := chi.URLParam(r, "id")
 
-	err = app.models.Players.Delete(id)
+	err := app.models.Players.Delete(userID, pin)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
@@ -106,6 +99,7 @@ func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 
 	v := validator.New()
 	qs := r.URL.Query()
+	userID := app.contextGetUser(r).ID
 
 	input.Name = app.readString(qs, "name", "")
 	input.Filters.Page = app.readInt(qs, "page", 1, v)
@@ -119,7 +113,7 @@ func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	players, metadata, err := app.models.Players.GetAll(input.Name, input.Filters)
+	players, metadata, err := app.models.Players.GetAll(userID, input.Name, input.Filters)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
@@ -132,13 +126,10 @@ func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) UpdatePlayer(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil || id <= 0 {
-		app.notFoundResponse(w, r)
-		return
-	}
+	pin := chi.URLParam(r, "id")
+	userID := app.contextGetUser(r).ID
 
-	player, err := app.models.Players.Get(id)
+	player, err := app.models.Players.Get(userID, pin)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
@@ -180,6 +171,8 @@ func (app *application) UpdatePlayer(w http.ResponseWriter, r *http.Request) {
 		app.failedValidationResponse(w, r, v.Errors)
 		return
 	}
+
+	player.UserId = userID
 
 	err = app.models.Players.Update(player)
 	if err != nil {

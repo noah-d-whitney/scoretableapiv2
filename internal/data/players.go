@@ -11,9 +11,9 @@ import (
 )
 
 type Player struct {
-	ID         int64     `json:"id"`
-	PinId      pins.Pin  `json:"pin_id"`
-	UserId     int64     `json:"user_id"`
+	ID         int64     `json:"-"`
+	PinId      pins.Pin  `json:"id"`
+	UserId     int64     `json:"-"`
 	FirstName  string    `json:"first_name"`
 	LastName   string    `json:"last_name"`
 	PrefNumber int       `json:"pref_number"`
@@ -77,21 +77,24 @@ func (m *PlayerModel) Insert(player *Player) error {
 	return nil
 }
 
-func (m *PlayerModel) Get(id int64) (*Player, error) {
-	if id < 1 {
-		return nil, ErrRecordNotFound
-	}
-
+func (m *PlayerModel) Get(userId int64, pin string) (*Player, error) {
 	stmt := `
-		SELECT id, first_name, last_name, pref_number, created_at, version, is_active
-		FROM players
-		WHERE id = $1`
+		SELECT pins.id, pins.pin, pins.scope, players.id, players.first_name, players.last_name, 
+			players.pref_number, players.created_at, players.version, players.is_active
+		FROM pins
+		JOIN players ON pins.id = players.pin_id
+		WHERE pins.pin = $1 AND players.user_id = $2 AND pins.scope = $3`
+
+	args := []any{pin, userId, pins.PinScopePlayers}
 
 	var player Player
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	err := m.db.QueryRowContext(ctx, stmt, id).Scan(
+	err := m.db.QueryRowContext(ctx, stmt, args...).Scan(
+		&player.PinId.ID,
+		&player.PinId.Pin,
+		&player.PinId.Scope,
 		&player.ID,
 		&player.FirstName,
 		&player.LastName,
@@ -112,21 +115,24 @@ func (m *PlayerModel) Get(id int64) (*Player, error) {
 	return &player, nil
 }
 
-func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, Metadata, error) {
+func (m *PlayerModel) GetAll(userID int64, name string, filters Filters) ([]*Player, Metadata,
+	error) {
 	stmt := fmt.Sprintf(`
-		SELECT count(*) OVER(), id, first_name, last_name, pref_number, created_at, version, 
-			is_active
+		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, players.id, players.first_name, players.last_name, 
+			players.pref_number, players.created_at, players.version, players.is_active
 		FROM players
-		WHERE (to_tsvector('simple', first_name) @@ plainto_tsquery('simple', $1) 
+		JOIN pins ON players.pin_id = pins.id
+		WHERE (user_id = $1
+			AND to_tsvector('simple', first_name) @@ plainto_tsquery('simple', $1) 
 			OR to_tsvector('simple', last_name) @@ plainto_tsquery('simple', $1)
-			OR $1 = '')
+			OR $2 = '')
 		ORDER BY %s %s, id ASC
-		LIMIT $2 OFFSET $3`, filters.sortColumn(), filters.sortDirection())
+		LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	args := []any{name, filters.limit(), filters.offset()}
+	args := []any{userID, name, filters.limit(), filters.offset()}
 
 	rows, err := m.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
@@ -140,6 +146,9 @@ func (m *PlayerModel) GetAll(name string, filters Filters) ([]*Player, Metadata,
 		var player Player
 		err := rows.Scan(
 			&totalRecords,
+			&player.PinId.ID,
+			&player.PinId.Pin,
+			&player.PinId.Scope,
 			&player.ID,
 			&player.FirstName,
 			&player.LastName,
@@ -168,7 +177,7 @@ func (m *PlayerModel) Update(player *Player) error {
 	stmt := `
 		UPDATE players
 		SET first_name = $1, last_name = $2, pref_number = $3, is_active = $4, version = version + 1
-		WHERE id = $5 AND version = $6
+		WHERE user_id = $5 AND id = $6 AND version = $7
 		RETURNING version`
 
 	args := []any{
@@ -176,6 +185,7 @@ func (m *PlayerModel) Update(player *Player) error {
 		player.LastName,
 		player.PrefNumber,
 		player.IsActive,
+		player.UserId,
 		player.ID,
 		player.Version,
 	}
@@ -196,19 +206,16 @@ func (m *PlayerModel) Update(player *Player) error {
 	return nil
 }
 
-func (m *PlayerModel) Delete(id int64) error {
-	if id < 1 {
-		return ErrRecordNotFound
-	}
-
+func (m *PlayerModel) Delete(userID int64, pin string) error {
 	stmt := `
 		DELETE FROM players
-		WHERE id = $1`
+		USING pins
+		WHERE pin = $1 AND user_id = $2`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	result, err := m.db.ExecContext(ctx, stmt, id)
+	result, err := m.db.ExecContext(ctx, stmt, pin, userID)
 	if err != nil {
 		return err
 	}
