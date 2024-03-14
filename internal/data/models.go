@@ -5,6 +5,7 @@ import (
 	"errors"
 )
 
+var helperModels HelperModels
 var ErrRecordNotFound = errors.New("record not found")
 var ErrEditConflict = errors.New("edit conflict")
 
@@ -17,7 +18,14 @@ type Models struct {
 	Permissions PermissionModel
 }
 
+type HelperModels struct {
+	Pins PinModel
+}
+
 func NewModels(initDb *sql.DB) Models {
+	helperModels = HelperModels{
+		Pins: PinModel{db: initDb},
+	}
 	return Models{
 		Users:       UserModel{db: initDb},
 		Players:     PlayerModel{db: initDb},

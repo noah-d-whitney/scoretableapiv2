@@ -1,6 +1,7 @@
 package data
 
 import (
+	"ScoreTableApi/internal/pins"
 	"ScoreTableApi/internal/validator"
 	"context"
 	"database/sql"
@@ -11,6 +12,8 @@ import (
 
 type Player struct {
 	ID         int64     `json:"id"`
+	PinId      pins.Pin  `json:"pin_id"`
+	UserId     int64     `json:"user_id"`
 	FirstName  string    `json:"first_name"`
 	LastName   string    `json:"last_name"`
 	PrefNumber int       `json:"pref_number"`
@@ -23,25 +26,55 @@ type PlayerModel struct {
 	db *sql.DB
 }
 
-// TODO Add userid to players table & get by pin
-
 func (m *PlayerModel) Insert(player *Player) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	pin, err := helperModels.Pins.New(pins.PinScopePlayers, tx)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
+	}
+	player.PinId = *pin
+
 	stmt := `
-		INSERT INTO players (first_name, last_name, pref_number, is_active)
-		VALUES ($1, $2, $3, true)
+		INSERT INTO players (user_id, pin_id, first_name, last_name, pref_number, is_active)
+		VALUES ($1, $2, $3, $4, $5, true)
 		RETURNING id, created_at, version, is_active`
 
 	args := []any{
+		player.UserId,
+		player.PinId.ID,
 		player.FirstName,
 		player.LastName,
 		player.PrefNumber,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	return m.db.QueryRowContext(ctx, stmt, args...).Scan(&player.ID, &player.CreatedAt,
+	err = tx.QueryRowContext(ctx, stmt, args...).Scan(&player.ID, &player.CreatedAt,
 		&player.Version, &player.IsActive)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (m *PlayerModel) Get(id int64) (*Player, error) {

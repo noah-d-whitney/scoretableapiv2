@@ -50,6 +50,7 @@ func (app *application) routes() http.Handler {
 	})
 
 	router.With(app.requireActivatedUser).Post("/v1/team", app.InsertTeam)
+	router.With(app.requireActivatedUser).Delete("/v1/team/{id}", app.DeleteTeam)
 
 	return router
 }

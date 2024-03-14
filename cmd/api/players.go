@@ -34,6 +34,7 @@ func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
 		app.failedValidationResponse(w, r, vldtr.Errors)
 		return
 	}
+	player.UserId = app.contextGetUser(r).ID
 
 	err = app.models.Players.Insert(player)
 	if err != nil {
