@@ -65,16 +65,66 @@ func (m *TeamModel) Insert(team *Team) error {
 	return nil
 }
 
-func (m *TeamModel) AssignTeamPlayers(team *Team) error {
-	stmt := fmt.Sprintf(`
-		INSERT INTO teams_players (user_id, team_id, player_id) VALUES %s;`,
-		m.GenerateTeamPlayerValues(team))
+func (m *TeamModel) Delete(teamID, userID int64) error {
+	stmt := `
+		DELETE FROM teams
+		WHERE id = $1 AND user_id = $2`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_, err := m.db.ExecContext(ctx, stmt)
+	_, err := m.db.ExecContext(ctx, stmt, teamID, userID)
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *TeamModel) adjustSize(t *Team, dif int, ctx context.Context) error {
+	stmt := `
+		UPDATE teams
+		SET size = size + $1, version = version + 1
+		WHERE id = $2 AND size = $3 AND version = $4
+		RETURNING size, version`
+
+	args := []any{dif, t.ID, t.Size, t.Version}
+
+	err := m.db.QueryRowContext(ctx, stmt, args...).Scan(&t.Size, &t.Version)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *TeamModel) AssignPlayers(team *Team) error {
+	insertStmt := fmt.Sprintf(`
+		INSERT INTO teams_players (user_id, team_id, player_id) 
+			VALUES %s;`, m.generateTeamPlayerValues(team))
+	adjSizeStmt := `
+		UPDATE teams
+			SET size = size + $1, version = version + 1
+			WHERE id = $2 AND size = $3 AND version = $4
+			RETURNING size, version`
+
+	team.Size = 9
+
+	args := []any{len(team.PlayerIDs), team.ID, team.Size, team.Version}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, insertStmt)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
 		switch {
 		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
 			`constraint "teams_players_team_id_fkey"`:
@@ -93,10 +143,23 @@ func (m *TeamModel) AssignTeamPlayers(team *Team) error {
 		}
 	}
 
-	return nil
+	err = tx.QueryRowContext(ctx, adjSizeStmt, args...).Scan(&team.Size, &team.Version)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrEditConflict
+		}
+		return err
+	}
+
+	err = tx.Commit()
+	return err
 }
 
-func (m *TeamModel) GenerateTeamPlayerValues(t *Team) string {
+func (m *TeamModel) generateTeamPlayerValues(t *Team) string {
 	var output []string
 	for _, pid := range t.PlayerIDs {
 		value := fmt.Sprintf("(%d, %d, %d)", t.UserID, t.ID, pid)

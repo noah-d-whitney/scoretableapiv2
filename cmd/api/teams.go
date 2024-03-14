@@ -5,6 +5,7 @@ import (
 	"ScoreTableApi/internal/validator"
 	"errors"
 	"net/http"
+	"strconv"
 )
 
 func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +32,6 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	team.UserID = app.contextGetUser(r).ID
-	team.Size = 0
 	pin, err := app.models.Pins.New(data.SCOPE_TEAMS)
 	if err != nil {
 		app.badRequestResponse(w, r, err)
@@ -63,7 +63,7 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = app.models.Teams.AssignTeamPlayers(team)
+	err = app.models.Teams.AssignPlayers(team)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrPlayerNotFound):
@@ -75,26 +75,24 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, data.ErrTeamNotFound) || errors.Is(err, data.ErrUserNotFound):
 			app.logger.PrintFatal(err, nil)
 			app.serverErrorResponse(w, r, err)
+		case errors.Is(err, data.ErrEditConflict):
+			app.editConflictResponse(w, r)
 		default:
 			app.serverErrorResponse(w, r, err)
+		}
+		err = app.models.Teams.Delete(team.ID, team.UserID)
+		if err != nil {
+			app.logger.PrintError(err, map[string]string{
+				"info":    "there was an issue with a team insert rollback",
+				"user_id": strconv.FormatInt(team.UserID, 10),
+				"team_id": strconv.FormatInt(team.ID, 10),
+			})
 		}
 		return
 	}
 
-}
-
-func (app *application) GetTeamInsert(w http.ResponseWriter, r *http.Request) {
-	err := app.models.Teams.AssignTeamPlayers(&data.Team{
-		ID:     1,
-		UserID: 7,
-	}, []int64{1, 3})
+	err = app.writeJSON(w, http.StatusCreated, envelope{"team": team}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
-		return
-	}
-	err = app.writeJSON(w, http.StatusOK, envelope{"rows": "ok"}, nil)
-	if err != nil {
-		app.serverErrorResponse(w, r, err)
-		return
 	}
 }
