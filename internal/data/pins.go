@@ -4,14 +4,13 @@ import (
 	"ScoreTableApi/internal/pins"
 	"context"
 	"database/sql"
-	"time"
 )
 
 type PinModel struct {
 	db *sql.DB
 }
 
-func (m *PinModel) New(scope string, tx *sql.Tx) (*pins.Pin, error) {
+func (m *PinModel) New(scope string, tx *sql.Tx, ctx context.Context) (*pins.Pin, error) {
 	pinString := pins.GeneratePin(6)
 	pin := &pins.Pin{
 		Pin:   pinString,
@@ -23,14 +22,11 @@ func (m *PinModel) New(scope string, tx *sql.Tx) (*pins.Pin, error) {
 		VALUES ($1, $2)
 		RETURNING id`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
 	err := tx.QueryRowContext(ctx, stmt, pin.Pin, pin.Scope).Scan(&pin.ID)
 	if err != nil {
 		switch {
 		case err.Error() == `pq: duplicate key value violates unique constraint "pins_pin_key"`:
-			return m.New(scope, tx)
+			return m.New(scope, tx, ctx)
 		default:
 			return nil, err
 		}

@@ -12,7 +12,7 @@ import (
 
 type Player struct {
 	ID         int64     `json:"-"`
-	PinId      pins.Pin  `json:"id"`
+	PinId      pins.Pin  `json:"pin"`
 	UserId     int64     `json:"-"`
 	FirstName  string    `json:"first_name"`
 	LastName   string    `json:"last_name"`
@@ -35,7 +35,7 @@ func (m *PlayerModel) Insert(player *Player) error {
 		return err
 	}
 
-	pin, err := helperModels.Pins.New(pins.PinScopePlayers, tx)
+	pin, err := helperModels.Pins.New(pins.PinScopePlayers, tx, ctx)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return rollbackErr
@@ -119,20 +119,20 @@ func (m *PlayerModel) GetAll(userID int64, name string, filters Filters) ([]*Pla
 	error) {
 	stmt := fmt.Sprintf(`
 		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, players.id, players.first_name, players.last_name, 
-			players.pref_number, players.created_at, players.version, players.is_active
+			players.pref_number, players.created_at, players.version, players.is_active 
 		FROM players
-		JOIN pins ON players.pin_id = pins.id
-		WHERE (user_id = $1
-			AND to_tsvector('simple', first_name) @@ plainto_tsquery('simple', $1) 
-			OR to_tsvector('simple', last_name) @@ plainto_tsquery('simple', $1)
+		INNER JOIN pins ON players.pin_id = pins.id
+		WHERE (user_id = $1 AND to_tsvector('simple', first_name) @@ plainto_tsquery('simple', $2) 
+			OR to_tsvector('simple', last_name) @@ plainto_tsquery('simple', $2)
 			OR $2 = '')
-		ORDER BY %s %s, id ASC
+		ORDER BY %s %s, players.id ASC
 		LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
+
+	fmt.Printf("sort column: %s", filters.sortColumn())
+	args := []any{userID, name, filters.limit(), filters.offset()}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-
-	args := []any{userID, name, filters.limit(), filters.offset()}
 
 	rows, err := m.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
@@ -210,23 +210,45 @@ func (m *PlayerModel) Delete(userID int64, pin string) error {
 	stmt := `
 		DELETE FROM players
 		USING pins
-		WHERE pin = $1 AND user_id = $2`
+		WHERE pin = $1 AND user_id = $2
+		RETURNING pin_id`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	result, err := m.db.ExecContext(ctx, stmt, pin, userID)
+	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	rowsAffected, err := result.RowsAffected()
+	var pinID int64
+	err = tx.QueryRowContext(ctx, stmt, pin, userID).Scan(&pinID)
 	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrRecordNotFound
+		default:
+			return err
+		}
+	}
+
+	err = helperModels.Pins.Delete(pinID, pins.PinScopePlayers, tx, ctx)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
 		return err
 	}
 
-	if rowsAffected == 0 {
-		return ErrRecordNotFound
+	err = tx.Commit()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
 	}
 
 	return nil

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
+	"strings"
 )
 
 func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +52,7 @@ func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) GetPlayer(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
-	pin := chi.URLParam(r, "id")
+	pin := strings.ToLower(chi.URLParam(r, "id"))
 
 	player, err := app.models.Players.Get(userID, pin)
 	if err != nil {
@@ -72,7 +73,7 @@ func (app *application) GetPlayer(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) DeletePlayer(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
-	pin := chi.URLParam(r, "id")
+	pin := strings.ToLower(chi.URLParam(r, "id"))
 
 	err := app.models.Players.Delete(userID, pin)
 	if err != nil {
@@ -104,8 +105,8 @@ func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 	input.Name = app.readString(qs, "name", "")
 	input.Filters.Page = app.readInt(qs, "page", 1, v)
 	input.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
-	input.Filters.Sort = app.readString(qs, "sort", "id")
-	input.Filters.SortSafeList = []string{"id", "first_name", "last_name", "pref_number", "-id",
+	input.Filters.Sort = app.readString(qs, "sort", "last_name")
+	input.Filters.SortSafeList = []string{"pin", "first_name", "last_name", "pref_number", "-pin",
 		"-first_name", "-last_name", "-pref_number"}
 
 	if data.ValidateFilters(v, input.Filters); !v.Valid() {
@@ -126,8 +127,8 @@ func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) UpdatePlayer(w http.ResponseWriter, r *http.Request) {
-	pin := chi.URLParam(r, "id")
 	userID := app.contextGetUser(r).ID
+	pin := strings.ToLower(chi.URLParam(r, "id"))
 
 	player, err := app.models.Players.Get(userID, pin)
 	if err != nil {

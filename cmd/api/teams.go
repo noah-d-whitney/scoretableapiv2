@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
-	"strconv"
+	"strings"
 )
 
 func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
@@ -62,15 +62,33 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 		app.serverErrorResponse(w, r, err)
 	}
 }
-func (app *application) DeleteTeam(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil || id <= 0 {
-		app.notFoundResponse(w, r)
+
+func (app *application) GetTeam(w http.ResponseWriter, r *http.Request) {
+	userID := app.contextGetUser(r).ID
+	pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	team, err := app.models.Teams.Get(userID, pin)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
 		return
 	}
-	userId := app.contextGetUser(r).ID
 
-	err = app.models.Teams.Delete(id, userId)
+	err = app.writeJSON(w, http.StatusOK, envelope{"team": team}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
+
+func (app *application) DeleteTeam(w http.ResponseWriter, r *http.Request) {
+	userID := app.contextGetUser(r).ID
+	pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	err := app.models.Teams.Delete(userID, pin)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):

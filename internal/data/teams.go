@@ -20,9 +20,9 @@ var (
 )
 
 type Team struct {
-	ID        int64     `json:"id"`
-	PinID     pins.Pin  `json:"pin_id"`
-	UserID    int64     `json:"user_id"`
+	ID        int64     `json:"-"`
+	PinID     pins.Pin  `json:"pin"`
+	UserID    int64     `json:"-"`
 	Name      string    `json:"name"`
 	Size      int       `json:"size"`
 	CreatedAt time.Time `json:"-"`
@@ -45,7 +45,7 @@ func (m *TeamModel) Insert(team *Team) error {
 		return err
 	}
 
-	pin, err := helperModels.Pins.New(pins.PinScopeTeams, tx)
+	pin, err := helperModels.Pins.New(pins.PinScopeTeams, tx, ctx)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return rollbackErr
@@ -101,10 +101,59 @@ func (m *TeamModel) Insert(team *Team) error {
 	return nil
 }
 
-func (m *TeamModel) Delete(teamID, userID int64) error {
+func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
+	stmt := `
+		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name, teams.size, 
+			teams.is_active, teams.version
+		FROM teams
+		JOIN pins ON teams.pin_id = pins.id
+		WHERE teams.user_id = $1 AND pins.pin = $2`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	team := &Team{}
+	err = tx.QueryRowContext(ctx, stmt, userID, pin).Scan(
+		&team.PinID.ID,
+		&team.PinID.Pin,
+		&team.PinID.Scope,
+		&team.ID,
+		&team.UserID,
+		&team.Name,
+		&team.Size,
+		&team.IsActive,
+		&team.Version,
+	)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, rollbackErr
+		}
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return nil, err
+	}
+
+	return team, nil
+}
+
+func (m *TeamModel) Delete(userID int64, pin string) error {
 	stmt := `
 		DELETE FROM teams
-		WHERE id = $1 AND user_id = $2
+		USING pins
+		WHERE user_id = $1 AND pin = $2
 		RETURNING pin_id`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -116,7 +165,7 @@ func (m *TeamModel) Delete(teamID, userID int64) error {
 	}
 
 	var pinID int64
-	err = tx.QueryRowContext(ctx, stmt, teamID, userID).Scan(&pinID)
+	err = tx.QueryRowContext(ctx, stmt, pin, userID).Scan(&pinID)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return rollbackErr
@@ -147,13 +196,6 @@ func assignPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 	insertStmt := fmt.Sprintf(`
 		INSERT INTO teams_players (user_id, team_id, player_id) 
 			VALUES %s;`, generateTeamPlayerValues(team))
-	adjSizeStmt := `
-		UPDATE teams
-			SET size = size + $1, version = version + 1
-			WHERE id = $2 AND size = $3 AND version = $4
-			RETURNING size, version`
-
-	args := []any{len(team.PlayerIDs), team.ID, team.Size, team.Version}
 
 	_, err := tx.ExecContext(ctx, insertStmt)
 	if err != nil {
@@ -175,16 +217,29 @@ func assignPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 		}
 	}
 
+	adjSizeStmt := `
+		UPDATE teams
+			SET size = size + $1, version = version + 1
+			WHERE id = $2 AND size = $3 AND version = $4
+			RETURNING size, version`
+
+	args := []any{len(team.PlayerIDs), team.ID, team.Size, team.Version}
+
 	err = tx.QueryRowContext(ctx, adjSizeStmt, args...).Scan(&team.Size, &team.Version)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			return ErrEditConflict
+		default:
+			return err
 		}
-		return err
 	}
 
 	return nil
+}
+
+func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
+	stmt := ``
 }
 
 func generateTeamPlayerValues(t *Team) string {
