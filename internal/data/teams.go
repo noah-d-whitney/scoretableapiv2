@@ -209,6 +209,104 @@ func (m *TeamModel) Delete(userID int64, pin string) error {
 	return nil
 }
 
+//todo update team players by pin instead of id
+
+func (m *TeamModel) Update(team *Team) error {
+	stmt := `
+		UPDATE teams
+		SET name = $1, is_active = $2, version = version + 1
+		WHERE teams.user_id = $3
+			AND teams.id = $4
+			AND teams.version = $5
+		RETURNING version`
+
+	args := []any{team.Name, team.IsActive, team.UserID, team.ID, team.Version}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	err = tx.QueryRowContext(ctx, stmt, args...).Scan(&team.Version)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
+	}
+
+	assign, unassign := parsePlayerAsgList(team)
+
+	for _, id := range assign {
+		err := assignPlayer(id, team.ID, team.UserID, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			switch {
+			case err.Error() == `pq: duplicate key value violates unique constraint `+
+				`"teams_players_pkey"`:
+				return ErrRecordNotFound
+			default:
+				return err
+			}
+		}
+	}
+
+	for _, id := range unassign {
+		err := unassignPlayer(id, team.ID, team.UserID, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
+	}
+
+	err = getTeamPlayers(team, tx, ctx)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
+	}
+	team.Size = len(team.Players)
+
+	err = tx.Commit()
+	if err != nil {
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+func assignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		INSERT INTO teams_players (player_id, team_id, user_id)
+		VALUES ($1, $2, $3)`
+	args := []any{playerID, teamID, userID}
+
+	result, err := tx.ExecContext(ctx, stmt, args...)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected != 1 {
+		return err
+	}
+
+	return nil
+}
+
 func unassignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		DELETE FROM teams_players
@@ -225,8 +323,11 @@ func unassignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Cont
 	}
 
 	rowsAffected, err := result.RowsAffected()
-	if err != nil || rowsAffected != 1 {
+	if err != nil {
 		return err
+	}
+	if rowsAffected != 1 {
+		return ErrRecordNotFound
 	}
 
 	return nil
