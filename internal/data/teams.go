@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -208,6 +209,29 @@ func (m *TeamModel) Delete(userID int64, pin string) error {
 	return nil
 }
 
+func unassignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		DELETE FROM teams_players
+		WHERE player_id = $1 AND team_id = $2 AND user_id = $3`
+
+	result, err := tx.ExecContext(ctx, stmt, playerID, teamID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrRecordNotFound
+		default:
+			return err
+		}
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected != 1 {
+		return err
+	}
+
+	return nil
+}
+
 func assignPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 	stmt := fmt.Sprintf(`
 		INSERT INTO teams_players (user_id, team_id, player_id) 
@@ -296,6 +320,21 @@ func generateTeamPlayerValues(t *Team) string {
 		output = append(output, value)
 	}
 	return strings.Join(output, ", ")
+}
+
+func parsePlayerAsgList(team *Team) (assignList []int64, unassignList []int64) {
+	for _, id := range team.PlayerIDs {
+		if id > 0 {
+			assignList = append(assignList, id)
+		} else if id < 0 {
+			float := float64(id)
+			float = math.Abs(float)
+			id = int64(float)
+			unassignList = append(unassignList, id)
+		}
+	}
+
+	return
 }
 
 func ValidateTeam(v *validator.Validator, team *Team) {
