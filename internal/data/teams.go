@@ -29,7 +29,7 @@ type Team struct {
 	Version   int32     `json:"-"`
 	IsActive  bool      `json:"is_active"`
 	PlayerIDs []int64   `json:"-"`
-	Players   []*Player `json:"players,omitempty"`
+	Players   []*Player `json:"players"`
 }
 
 type TeamModel struct {
@@ -53,6 +53,7 @@ func (m *TeamModel) Insert(team *Team) error {
 		return err
 	}
 	team.PinID = *pin
+	team.Players = []*Player{}
 
 	stmt := `
 		INSERT INTO teams (pin_id, user_id, name)
@@ -88,6 +89,14 @@ func (m *TeamModel) Insert(team *Team) error {
 			}
 			return err
 		}
+
+		err = getTeamPlayers(team, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
 	}
 
 	err = tx.Commit()
@@ -103,7 +112,7 @@ func (m *TeamModel) Insert(team *Team) error {
 
 func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 	stmt := `
-		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name, teams.size, 
+		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name, 
 			teams.is_active, teams.version
 		FROM teams
 		JOIN pins ON teams.pin_id = pins.id
@@ -125,7 +134,6 @@ func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 		&team.ID,
 		&team.UserID,
 		&team.Name,
-		&team.Size,
 		&team.IsActive,
 		&team.Version,
 	)
@@ -139,6 +147,14 @@ func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 		default:
 			return nil, err
 		}
+	}
+
+	err = getTeamPlayers(team, tx, ctx)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, rollbackErr
+		}
+		return nil, err
 	}
 
 	err = tx.Commit()
@@ -193,11 +209,11 @@ func (m *TeamModel) Delete(userID int64, pin string) error {
 }
 
 func assignPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
-	insertStmt := fmt.Sprintf(`
+	stmt := fmt.Sprintf(`
 		INSERT INTO teams_players (user_id, team_id, player_id) 
 			VALUES %s;`, generateTeamPlayerValues(team))
 
-	_, err := tx.ExecContext(ctx, insertStmt)
+	_, err := tx.ExecContext(ctx, stmt)
 	if err != nil {
 		switch {
 		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
@@ -217,29 +233,60 @@ func assignPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 		}
 	}
 
-	adjSizeStmt := `
-		UPDATE teams
-			SET size = size + $1, version = version + 1
-			WHERE id = $2 AND size = $3 AND version = $4
-			RETURNING size, version`
-
-	args := []any{len(team.PlayerIDs), team.ID, team.Size, team.Version}
-
-	err = tx.QueryRowContext(ctx, adjSizeStmt, args...).Scan(&team.Size, &team.Version)
-	if err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			return ErrEditConflict
-		default:
-			return err
-		}
-	}
-
 	return nil
 }
 
 func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
-	stmt := ``
+	stmt := `
+		SELECT pins.id, pins.pin, pins.scope, players.id, players.user_id, players.first_name, 
+			players.last_name, players.pref_number, players.is_active, players.created_at, players.version
+		FROM teams_players
+		JOIN players ON teams_players.player_id = players.id
+		JOIN teams ON teams_players.team_id = teams.id
+		JOIN pins ON players.pin_id = pins.id
+		WHERE teams.user_id = $1 AND teams.id = $2
+		ORDER BY players.last_name`
+
+	rows, err := tx.QueryContext(ctx, stmt, team.UserID, team.ID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil
+		default:
+			return err
+		}
+	}
+	defer rows.Close()
+
+	players := []*Player{}
+	for rows.Next() {
+		var player Player
+		err := rows.Scan(
+			&player.PinId.ID,
+			&player.PinId.Pin,
+			&player.PinId.Scope,
+			&player.ID,
+			&player.UserId,
+			&player.FirstName,
+			&player.LastName,
+			&player.PrefNumber,
+			&player.IsActive,
+			&player.CreatedAt,
+			&player.Version,
+		)
+		if err != nil {
+			return err
+		}
+		players = append(players, &player)
+	}
+
+	if err = rows.Err(); err != nil {
+		return err
+	}
+
+	team.Players = players
+	team.Size = len(players)
+	return nil
 }
 
 func generateTeamPlayerValues(t *Team) string {

@@ -128,7 +128,6 @@ func (m *PlayerModel) GetAll(userID int64, name string, filters Filters) ([]*Pla
 		ORDER BY %s %s, players.id ASC
 		LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
 
-	fmt.Printf("sort column: %s", filters.sortColumn())
 	args := []any{userID, name, filters.limit(), filters.offset()}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -210,8 +209,10 @@ func (m *PlayerModel) Delete(userID int64, pin string) error {
 	stmt := `
 		DELETE FROM players
 		USING pins
-		WHERE pin = $1 AND user_id = $2
-		RETURNING pin_id`
+		WHERE players.user_id = $1
+			AND pins.pin = $2
+			AND players.pin_id = pins.id
+		RETURNING players.pin_id, players.id`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -222,7 +223,8 @@ func (m *PlayerModel) Delete(userID int64, pin string) error {
 	}
 
 	var pinID int64
-	err = tx.QueryRowContext(ctx, stmt, pin, userID).Scan(&pinID)
+	var id int64
+	err = tx.QueryRowContext(ctx, stmt, userID, pin).Scan(&pinID, &id)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return rollbackErr
