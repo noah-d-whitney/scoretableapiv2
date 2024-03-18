@@ -31,7 +31,7 @@ type Team struct {
 	Version   int32     `json:"-"`
 	IsActive  bool      `json:"is_active"`
 	PlayerIDs []string  `json:"-"`
-	Players   []*Player `json:"players"`
+	Players   []*Player `json:"players,omitempty"`
 }
 
 type TeamModel struct {

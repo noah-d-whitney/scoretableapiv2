@@ -103,8 +103,8 @@ func (app *application) GetAllTeams(w http.ResponseWriter, r *http.Request) {
 	input.Includes.Values = app.readCSV(qs, "includes", make([]string, 0))
 	input.Includes.SafeList = []string{"players"}
 	for _, str := range input.Includes.Values {
-		if slices.Index(input.Includes.SafeList, str) == -1 {
-			v.AddError("includes", fmt.Sprintf(`Invalid includes value. 
+		if !slices.Contains(input.Includes.SafeList, str) {
+			v.AddError("includes", fmt.Sprintf(`Invalid includes value.
 Possible include values for teams are: "%s"`, strings.Join(input.Includes.SafeList, `", "`)))
 			app.failedValidationResponse(w, r, v.Errors)
 			return
