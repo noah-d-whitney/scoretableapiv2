@@ -11,6 +11,7 @@ var (
 	letterRunes     = []rune("abcdefghijklmnopqrstuvwxyz1234567890")
 	PinScopeTeams   = "teams"
 	PinScopePlayers = "players"
+	PinScopeGames   = "games"
 )
 
 type Pin struct {
