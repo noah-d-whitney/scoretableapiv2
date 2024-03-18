@@ -19,7 +19,7 @@ type Player struct {
 	PrefNumber int       `json:"pref_number"`
 	CreatedAt  time.Time `json:"-"`
 	Version    int32     `json:"-"`
-	IsActive   bool      `json:"active"`
+	IsActive   bool      `json:"is_active"`
 }
 
 type PlayerModel struct {

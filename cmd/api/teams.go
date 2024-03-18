@@ -12,8 +12,8 @@ import (
 
 func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Name      string  `json:"name"`
-		PlayerIDs []int64 `json:"player_ids"`
+		Name      string   `json:"name"`
+		PlayerIDs []string `json:"player_ids"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -100,9 +100,9 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Name      *string `json:"name"`
-		IsActive  *bool   `json:"is_active"`
-		PlayerIDs []int64 `json:"player_ids"`
+		Name      *string  `json:"name"`
+		IsActive  *bool    `json:"is_active"`
+		PlayerIDs []string `json:"player_ids"`
 	}
 
 	err = app.readJSON(w, r, &input)
@@ -111,17 +111,28 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	v := validator.New()
+
 	if input.Name != nil {
+		if *input.Name == team.Name {
+			v.AddError("name", "cannot be old name")
+			app.failedValidationResponse(w, r, v.Errors)
+			return
+		}
 		team.Name = *input.Name
 	}
 	if input.IsActive != nil {
+		if *input.IsActive == team.IsActive {
+			v.AddError("is_active", "cannot be same as old value")
+			app.failedValidationResponse(w, r, v.Errors)
+			return
+		}
 		team.IsActive = *input.IsActive
 	}
 	if input.PlayerIDs != nil {
 		team.PlayerIDs = input.PlayerIDs
 	}
 
-	v := validator.New()
 	if data.ValidateTeam(v, team); !v.Valid() {
 		app.failedValidationResponse(w, r, v.Errors)
 		return
@@ -130,8 +141,16 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	err = app.models.Teams.Update(team)
 	if err != nil {
 		switch {
-		case errors.Is(err, data.ErrRecordNotFound):
-			app.notFoundResponse(w, r)
+		case errors.Is(err, data.ErrPlayerNotFound):
+			v.AddError("player_ids", "one or more listed players do not exist")
+			app.failedValidationResponse(w, r, v.Errors)
+		case errors.Is(err, data.ErrDuplicatePlayer):
+			v.AddError("player_ids",
+				"one or more players for assignment are already assigned to team")
+			app.failedValidationResponse(w, r, v.Errors)
+		case errors.Is(err, data.ErrPlayerNotOnTeam):
+			v.AddError("player_ids", "one or more players for unassignment are not found on team")
+			app.failedValidationResponse(w, r, v.Errors)
 		case errors.Is(err, data.ErrEditConflict):
 			app.editConflictResponse(w, r)
 		default:
@@ -140,7 +159,6 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// todo send message with edits in response
 	err = app.writeJSON(w, http.StatusOK, envelope{"team": team}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)

@@ -1,7 +1,6 @@
 package assert
 
 import (
-	json2 "encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -31,12 +30,11 @@ func NilError(t *testing.T, actual error) {
 	}
 }
 
-func Int64SliceEqual(t *testing.T, actual, expected []int64) {
+func StringSliceEqual(t *testing.T, actual, expected []string) {
 	t.Helper()
-	acStr, _ := json2.Marshal(actual)
-	expStr, _ := json2.Marshal(expected)
 
 	if slices.Compare(actual, expected) != 0 {
-		t.Errorf("got %s, expected: %s", acStr, expStr)
+		t.Errorf("got [%s], expected: [%s]", strings.Join(actual, ", "), strings.Join(expected, ","+
+			" "))
 	}
 }

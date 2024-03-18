@@ -8,41 +8,35 @@ import (
 func TestParsePlayerAsgList(t *testing.T) {
 	tests := []struct {
 		name         string
-		idList       []int64
-		assignWant   []int64
-		unassignWant []int64
+		idList       []string
+		assignWant   []string
+		unassignWant []string
 	}{
 		{
 			name:         "Parse Assignment",
-			idList:       []int64{1, 2, 3, 4, 5},
-			assignWant:   []int64{1, 2, 3, 4, 5},
-			unassignWant: []int64{},
+			idList:       []string{"ABC", "EFG", "HIJ"},
+			assignWant:   []string{"ABC", "EFG", "HIJ"},
+			unassignWant: []string{},
 		},
 		{
 			name:         "Parse Unassignment",
-			idList:       []int64{-1, -2, -3, -4, -5},
-			assignWant:   []int64{},
-			unassignWant: []int64{1, 2, 3, 4, 5},
+			idList:       []string{"-ABC", "-EFG", "-HIJ"},
+			assignWant:   []string{},
+			unassignWant: []string{"ABC", "EFG", "HIJ"},
 		},
 		{
 			name:         "Parse Assign & Unassign",
-			idList:       []int64{1, 2, 3, -4, -5},
-			assignWant:   []int64{1, 2, 3},
-			unassignWant: []int64{4, 5},
-		},
-		{
-			name:         "Parse With Zero",
-			idList:       []int64{0, 1, 2, 3, 4},
-			assignWant:   []int64{1, 2, 3, 4},
-			unassignWant: []int64{},
+			idList:       []string{"ABC", "EFG", "-HIJ"},
+			assignWant:   []string{"ABC", "EFG"},
+			unassignWant: []string{"HIJ"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			as, ua := parsePlayerAsgList(&Team{PlayerIDs: tt.idList})
-			assert.Int64SliceEqual(t, as, tt.assignWant)
-			assert.Int64SliceEqual(t, ua, tt.unassignWant)
+			assert.StringSliceEqual(t, as, tt.assignWant)
+			assert.StringSliceEqual(t, ua, tt.unassignWant)
 		})
 	}
 }

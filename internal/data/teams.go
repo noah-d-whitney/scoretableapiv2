@@ -6,8 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
-	"math"
 	"strings"
 	"time"
 )
@@ -18,6 +16,7 @@ var (
 	ErrTeamNotFound      = errors.New("team not found")
 	ErrUserNotFound      = errors.New("user not found")
 	ErrDuplicatePlayer   = errors.New("duplicate player team assignment")
+	ErrPlayerNotOnTeam   = errors.New("player not found on team")
 )
 
 type Team struct {
@@ -29,7 +28,7 @@ type Team struct {
 	CreatedAt time.Time `json:"-"`
 	Version   int32     `json:"-"`
 	IsActive  bool      `json:"is_active"`
-	PlayerIDs []int64   `json:"-"`
+	PlayerIDs []string  `json:"-"`
 	Players   []*Player `json:"players"`
 }
 
@@ -83,12 +82,14 @@ func (m *TeamModel) Insert(team *Team) error {
 	}
 
 	if len(team.PlayerIDs) != 0 {
-		err := assignPlayers(team, tx, ctx)
-		if err != nil {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				return rollbackErr
+		for _, p := range team.PlayerIDs {
+			err := assignPlayer(team.ID, team.UserID, p, tx, ctx)
+			if err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return rollbackErr
+				}
+				return err
 			}
-			return err
 		}
 
 		err = getTeamPlayers(team, tx, ctx)
@@ -209,8 +210,6 @@ func (m *TeamModel) Delete(userID int64, pin string) error {
 	return nil
 }
 
-//todo update team players by pin instead of id
-
 func (m *TeamModel) Update(team *Team) error {
 	stmt := `
 		UPDATE teams
@@ -240,24 +239,18 @@ func (m *TeamModel) Update(team *Team) error {
 
 	assign, unassign := parsePlayerAsgList(team)
 
-	for _, id := range assign {
-		err := assignPlayer(id, team.ID, team.UserID, tx, ctx)
+	for _, pin := range assign {
+		err := assignPlayer(team.ID, team.UserID, pin, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
 			}
-			switch {
-			case err.Error() == `pq: duplicate key value violates unique constraint `+
-				`"teams_players_pkey"`:
-				return ErrRecordNotFound
-			default:
-				return err
-			}
+			return err
 		}
 	}
 
-	for _, id := range unassign {
-		err := unassignPlayer(id, team.ID, team.UserID, tx, ctx)
+	for _, pin := range unassign {
+		err := unassignPlayer(team.ID, team.UserID, pin, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
@@ -288,15 +281,44 @@ func (m *TeamModel) Update(team *Team) error {
 	return nil
 }
 
-func assignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Context) error {
+func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
+	getStmt := `
+		SELECT players.id
+		FROM players
+		JOIN public.pins ON pins.id = players.pin_id
+		WHERE pins.pin = $1`
+
+	var playerID string
+	err := tx.QueryRowContext(ctx, getStmt, playerPin).Scan(&playerID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrPlayerNotFound
+		}
+		return err
+	}
+
 	stmt := `
 		INSERT INTO teams_players (player_id, team_id, user_id)
 		VALUES ($1, $2, $3)`
+
 	args := []any{playerID, teamID, userID}
 
 	result, err := tx.ExecContext(ctx, stmt, args...)
 	if err != nil {
-		return err
+		switch {
+		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
+			`constraint "teams_players_team_id_fkey"`:
+			return ErrTeamNotFound
+		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
+			`constraint "teams_players_user_id_fkey"`:
+			return ErrUserNotFound
+		case err.Error() == `pq: duplicate key value violates unique constraint `+
+			`"teams_players_pkey"`:
+			return ErrDuplicatePlayer
+		default:
+			return err
+		}
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -307,16 +329,23 @@ func assignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Contex
 	return nil
 }
 
-func unassignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Context) error {
+func unassignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		DELETE FROM teams_players
-		WHERE player_id = $1 AND team_id = $2 AND user_id = $3`
+		USING pins
+		WHERE player_id = (
+				SELECT players.id
+				FROM players 
+				JOIN pins ON players.pin_id = pins.id
+				WHERE pins.pin = $1)
+			AND team_id = $2 
+			AND user_id = $3`
 
-	result, err := tx.ExecContext(ctx, stmt, playerID, teamID, userID)
+	result, err := tx.ExecContext(ctx, stmt, playerPin, teamID, userID)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return ErrRecordNotFound
+			return ErrPlayerNotOnTeam
 		default:
 			return err
 		}
@@ -327,35 +356,7 @@ func unassignPlayer(playerID, teamID, userID int64, tx *sql.Tx, ctx context.Cont
 		return err
 	}
 	if rowsAffected != 1 {
-		return ErrRecordNotFound
-	}
-
-	return nil
-}
-
-func assignPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
-	stmt := fmt.Sprintf(`
-		INSERT INTO teams_players (user_id, team_id, player_id) 
-			VALUES %s;`, generateTeamPlayerValues(team))
-
-	_, err := tx.ExecContext(ctx, stmt)
-	if err != nil {
-		switch {
-		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
-			`constraint "teams_players_team_id_fkey"`:
-			return ErrTeamNotFound
-		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
-			`constraint "teams_players_player_id_fkey"`:
-			return ErrPlayerNotFound
-		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
-			`constraint "teams_players_user_id_fkey"`:
-			return ErrUserNotFound
-		case err.Error() == `pq: duplicate key value violates unique constraint `+
-			`"teams_players_pkey"`:
-			return ErrDuplicatePlayer
-		default:
-			return err
-		}
+		return ErrPlayerNotOnTeam
 	}
 
 	return nil
@@ -414,24 +415,13 @@ func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 	return nil
 }
 
-func generateTeamPlayerValues(t *Team) string {
-	var output []string
-	for _, pid := range t.PlayerIDs {
-		value := fmt.Sprintf("(%d, %d, %d)", t.UserID, t.ID, pid)
-		output = append(output, value)
-	}
-	return strings.Join(output, ", ")
-}
-
-func parsePlayerAsgList(team *Team) (assignList []int64, unassignList []int64) {
-	for _, id := range team.PlayerIDs {
-		if id > 0 {
-			assignList = append(assignList, id)
-		} else if id < 0 {
-			float := float64(id)
-			float = math.Abs(float)
-			id = int64(float)
-			unassignList = append(unassignList, id)
+func parsePlayerAsgList(team *Team) (assignList []string, unassignList []string) {
+	for _, pin := range team.PlayerIDs {
+		if pin[0] != '-' {
+			assignList = append(assignList, pin)
+		} else if pin[0] == '-' {
+			cleanStr := strings.TrimPrefix(pin, "-")
+			unassignList = append(unassignList, cleanStr)
 		}
 	}
 
