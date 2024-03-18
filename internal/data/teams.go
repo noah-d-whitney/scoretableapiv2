@@ -6,6 +6,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -115,7 +117,7 @@ func (m *TeamModel) Insert(team *Team) error {
 func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 	stmt := `
 		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name, 
-			teams.is_active, teams.version
+			teams.is_active, teams.version, teams.created_at
 		FROM teams
 		JOIN pins ON teams.pin_id = pins.id
 		WHERE teams.user_id = $1 AND pins.pin = $2`
@@ -138,6 +140,7 @@ func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 		&team.Name,
 		&team.IsActive,
 		&team.Version,
+		&team.CreatedAt,
 	)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
@@ -165,6 +168,95 @@ func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 	}
 
 	return team, nil
+}
+
+func (m *TeamModel) GetAll(userID int64, name string, includes []string, filters Filters) ([]*Team,
+	Metadata,
+	error) {
+	stmt := fmt.Sprintf(`
+		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name,  
+			teams.created_at, teams.version, teams.is_active, (
+				SELECT count(*)
+				FROM teams_players
+				WHERE teams_players.user_id = $1 AND teams_players.team_id = teams.id)
+		FROM teams
+		INNER JOIN pins ON teams.pin_id = pins.id
+		WHERE (user_id = $1 AND to_tsvector('simple', teams.name) @@ plainto_tsquery('simple', $2) 
+			OR $2 = '')
+		ORDER BY %s %s, teams.id ASC
+		LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
+
+	args := []any{userID, name, filters.limit(), filters.offset()}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, Metadata{}, rollbackErr
+		}
+		return nil, Metadata{}, err
+	}
+
+	rows, err := tx.QueryContext(ctx, stmt, args...)
+	if err != nil {
+		return nil, Metadata{}, err
+	}
+	defer rows.Close()
+
+	totalRecords := 0
+	teams := []*Team{}
+	for rows.Next() {
+		var team Team
+		err := rows.Scan(
+			&totalRecords,
+			&team.PinID.ID,
+			&team.PinID.Pin,
+			&team.PinID.Scope,
+			&team.ID,
+			&team.UserID,
+			&team.Name,
+			&team.CreatedAt,
+			&team.Version,
+			&team.IsActive,
+			&team.Size,
+		)
+		if err != nil {
+			return nil, Metadata{}, err
+		}
+
+		team.Players = []*Player{}
+		teams = append(teams, &team)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, Metadata{}, err
+	}
+
+	if slices.Contains(includes, "players") {
+		for _, team := range teams {
+			err := getTeamPlayers(team, tx, ctx)
+			if err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return nil, Metadata{}, rollbackErr
+				}
+				return nil, Metadata{}, err
+			}
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, Metadata{}, rollbackErr
+		}
+		return nil, Metadata{}, err
+	}
+
+	metadata := calculateMetadata(totalRecords, filters.Page, filters.PageSize)
+
+	return teams, metadata, nil
 }
 
 func (m *TeamModel) Delete(userID int64, pin string) error {

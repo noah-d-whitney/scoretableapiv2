@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -79,6 +80,55 @@ func (app *application) GetTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = app.writeJSON(w, http.StatusOK, envelope{"team": team}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
+
+func (app *application) GetAllTeams(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Name     string
+		Includes struct {
+			Values   []string
+			SafeList []string
+		}
+		data.Filters
+	}
+
+	v := validator.New()
+	qs := r.URL.Query()
+	userID := app.contextGetUser(r).ID
+
+	input.Name = app.readString(qs, "name", "")
+	input.Includes.Values = app.readCSV(qs, "includes", make([]string, 0))
+	input.Includes.SafeList = []string{"players"}
+	for _, str := range input.Includes.Values {
+		if slices.Index(input.Includes.SafeList, str) == -1 {
+			v.AddError("includes", fmt.Sprintf(`Invalid includes value. 
+Possible include values for teams are: "%s"`, strings.Join(input.Includes.SafeList, `", "`)))
+			app.failedValidationResponse(w, r, v.Errors)
+			return
+		}
+	}
+
+	input.Filters.Page = app.readInt(qs, "page", 1, v)
+	input.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
+	input.Filters.Sort = app.readString(qs, "sort", "name")
+	input.Filters.SortSafeList = []string{"pin", "name", "-pin", "-name"}
+
+	if data.ValidateFilters(v, input.Filters); !v.Valid() {
+		app.failedValidationResponse(w, r, v.Errors)
+		return
+	}
+
+	teams, metadata, err := app.models.Teams.GetAll(userID, input.Name, input.Includes.Values,
+		input.Filters)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"metadata": metadata, "teams": teams}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 	}
