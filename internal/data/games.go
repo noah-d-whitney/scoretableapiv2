@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -23,7 +24,7 @@ type Game struct {
 	Status       GameStatus `json:"status"`
 	DateTime     time.Time  `json:"date_time"`
 	TeamSize     int64      `json:"team_size"`
-	Type         string     `json:"type"`
+	Type         GameType   `json:"type"`
 	PeriodLength int64      `json:"period_length,omitempty"`
 	PeriodCount  int64      `json:"period_count,omitempty"`
 	ScoreTarget  int64      `json:"score_target,omitempty"`
@@ -41,6 +42,13 @@ const (
 type GameModel struct {
 	db *sql.DB
 }
+
+type GameType string
+
+const (
+	GameTypeTimed  GameType = "timed"
+	GameTypeTarget GameType = "target"
+)
 
 func (m *GameModel) Insert(game *Game) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -113,4 +121,25 @@ func (m *GameModel) Insert(game *Game) error {
 
 func ValidateGame(v *validator.Validator, game *Game) {
 	v.Check(game.DateTime.After(time.Now()), "date_time", "must be in the future")
+	v.Check(game.TeamSize > 0, "team_size", "must be greater than 0")
+	v.Check(game.TeamSize <= 5, "team_size", "must be 5 or less")
+	v.Check(game.Type == GameTypeTimed || game.Type == GameTypeTarget, "type",
+		fmt.Sprintf(`Must be one of the following: "%s", "%s"`, GameTypeTimed, GameTypeTarget))
+
+	if game.Type == GameTypeTimed {
+		v.Check(game.PeriodLength > 0, "period_length",
+			"must be greater than 0 seconds for a timed game")
+		v.Check(game.PeriodLength <= 60*30, "period_count",
+			"must be less than 20 minutes for a timed game")
+		v.Check(game.PeriodCount > 0, "period_count", "must be greater than 0")
+		v.Check(game.PeriodCount <= 4, "period_count", "must be 4 or less")
+		v.Check(game.ScoreTarget == 0, "score_target", "cannot be provided for a timed game")
+	}
+
+	if game.Type == GameTypeTarget {
+		v.Check(game.ScoreTarget > 0, "score_target", "must be greater than 0 for a target game")
+		v.Check(game.ScoreTarget <= 100, "score_target", "must be 100 or less")
+		v.Check(game.PeriodCount == 0, "period_count", "cannot be provided for a target game")
+		v.Check(game.PeriodLength == 0, "period_length", "cannot be provided for a target game")
+	}
 }

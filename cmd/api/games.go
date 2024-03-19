@@ -2,6 +2,7 @@ package main
 
 import (
 	"ScoreTableApi/internal/data"
+	"ScoreTableApi/internal/validator"
 	"fmt"
 	"net/http"
 	"time"
@@ -23,13 +24,26 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	v := validator.New()
+
+	//if input.DateTime == nil {
+	//	v.AddError("date_time", "must be provided")
+	//	app.failedValidationResponse(w, r, v.Errors)
+	//	return
+	//}
+
 	game := &data.Game{
 		DateTime:     *input.DateTime,
 		TeamSize:     input.TeamSize,
-		Type:         input.Type,
+		Type:         data.GameType(input.Type),
 		PeriodLength: input.PeriodLength,
 		PeriodCount:  input.PeriodCount,
 		ScoreTarget:  input.ScoreTarget,
+	}
+
+	if data.ValidateGame(v, game); !v.Valid() {
+		app.failedValidationResponse(w, r, v.Errors)
+		return
 	}
 
 	app.logger.PrintInfo(fmt.Sprintf("%+d\n", &game), nil)
