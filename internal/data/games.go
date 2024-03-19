@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	ErrInvalidPeriods  = errors.New("both length and count must be provided for periods")
-	ErrInvalidGameType = errors.New("game cannot have periods and score target")
+	ErrGameNotFound      = errors.New("game could not be found")
+	ErrDuplicateGameTeam = errors.New("duplicate game team")
+	ErrTeamNotInGame     = errors.New("team not assigned to game")
 )
 
 type Game struct {
@@ -28,6 +29,8 @@ type Game struct {
 	PeriodLength *int64     `json:"period_length,omitempty"`
 	PeriodCount  *int64     `json:"period_count,omitempty"`
 	ScoreTarget  *int64     `json:"score_target,omitempty"`
+	TeamIDs      []string   `json:"team_ids,omitempty"`
+	Teams        []*Team    `json:"teams"`
 }
 
 type GameStatus int64
@@ -85,6 +88,7 @@ func (m *GameModel) Insert(game *Game) error {
 		return err
 	}
 	game.PinID = *pin
+	game.Teams = []*Team{}
 
 	stmt := `
 		INSERT INTO games (user_id, pin_id, date_time, team_size, 
@@ -115,12 +119,157 @@ func (m *GameModel) Insert(game *Game) error {
 		return err
 	}
 
+	if len(game.TeamIDs) > 0 {
+		for _, teamPin := range game.TeamIDs {
+			err := assignGameTeam(game.ID, game.UserID, teamPin, tx, ctx)
+			if err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return rollbackErr
+				}
+				return err
+			}
+		}
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return rollbackErr
 		}
 		return err
+	}
+
+	return nil
+}
+
+func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name, 
+			teams.created_at, teams.version, teams.is_active, (
+				SELECT count(*)
+				FROM teams_players
+				WHERE teams_players.user_id = $1 AND teams_players.team_id = teams.id)	
+		FROM games_teams
+		JOIN teams ON games_teams.team_id = teams.id
+		JOIN games ON games_teams.game_id = games.id
+		JOIN pins ON teams.pin_id = pins.id
+		WHERE games.user_id = $1 AND games.id = $2
+		ORDER BY teams.name`
+
+	rows, err := tx.QueryContext(ctx, stmt, game.UserID, game.ID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil
+		default:
+			return err
+		}
+	}
+	defer rows.Close()
+
+	teams := []*Team{}
+	for rows.Next() {
+		var team Team
+		err := rows.Scan(
+			&team.PinID.ID,
+			&team.PinID.Pin,
+			&team.PinID.Scope,
+			&team.ID,
+			&team.UserID,
+			&team.Name,
+			&team.CreatedAt,
+			&team.Version,
+			&team.IsActive,
+			&team.Size,
+		)
+		if err != nil {
+			return err
+		}
+		teams = append(teams, &team)
+	}
+
+	if err = rows.Err(); err != nil {
+		return err
+	}
+
+	game.Teams = teams
+	return nil
+}
+
+func assignGameTeam(gameID, userID int64, teamPin string, tx *sql.Tx, ctx context.Context) error {
+	getStmt := `
+		SELECT teams.id
+		FROM teams
+		JOIN pins ON teams.pin_id = pins.id
+		WHERE pins.pin = $1 AND teams.user_id = $2`
+
+	var teamID int64
+	err := tx.QueryRowContext(ctx, getStmt, teamPin, userID).Scan(&teamID)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
+	}
+
+	stmt := `
+		INSERT INTO games_teams (user_id, game_id, team_id)
+		VALUES ($1, $2, $3)`
+
+	args := []any{userID, gameID, teamID}
+
+	result, err := tx.ExecContext(ctx, stmt, args...)
+	if err != nil {
+		switch {
+		case err.Error() == `pq: insert or update on table "games_teams" violates foreign key `+
+			`constraint "games_teams_game_id_fkey"`:
+			return ErrGameNotFound
+		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
+			`constraint "games_teams_user_id_fkey"`:
+			return ErrUserNotFound
+		case err.Error() == `pq: duplicate key value violates unique constraint `+
+			`"games_teams_pkey"`:
+			return ErrDuplicateGameTeam
+		default:
+			return err
+		}
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected != 1 {
+		return err
+	}
+
+	return nil
+}
+
+func unassignGameTeam(gameID, userID int64, teamPin string, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		DELETE FROM games_teams
+		WHERE team_id = (
+				SELECT teams.id
+				FROM teams
+				JOIN pins ON teams.pin_id = pins.id
+				WHERE pins.pin = $1)
+			AND game_id = $2 
+			AND user_id = $3`
+
+	result, err := tx.ExecContext(ctx, stmt, teamPin, gameID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrTeamNotInGame
+		default:
+			return err
+		}
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected != 1 {
+		return ErrTeamNotInGame
 	}
 
 	return nil

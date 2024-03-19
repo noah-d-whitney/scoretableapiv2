@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 )
 
@@ -329,7 +328,7 @@ func (m *TeamModel) Update(team *Team) error {
 		return err
 	}
 
-	assign, unassign := parsePlayerAsgList(team)
+	assign, unassign := parsePinList(team.PlayerIDs)
 
 	for _, pin := range assign {
 		err := assignPlayer(team.ID, team.UserID, pin, tx, ctx)
@@ -373,15 +372,17 @@ func (m *TeamModel) Update(team *Team) error {
 	return nil
 }
 
+// TODO assign lineup #
+
 func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
 	getStmt := `
 		SELECT players.id
 		FROM players
 		JOIN public.pins ON pins.id = players.pin_id
-		WHERE pins.pin = $1`
+		WHERE pins.pin = $1 AND players.user_id = $2`
 
 	var playerID string
-	err := tx.QueryRowContext(ctx, getStmt, playerPin).Scan(&playerID)
+	err := tx.QueryRowContext(ctx, getStmt, playerPin, userID).Scan(&playerID)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -424,7 +425,6 @@ func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx contex
 func unassignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		DELETE FROM teams_players
-		USING pins
 		WHERE player_id = (
 				SELECT players.id
 				FROM players 
@@ -505,19 +505,6 @@ func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 	team.Players = players
 	team.Size = len(players)
 	return nil
-}
-
-func parsePlayerAsgList(team *Team) (assignList []string, unassignList []string) {
-	for _, pin := range team.PlayerIDs {
-		if pin[0] != '-' {
-			assignList = append(assignList, pin)
-		} else if pin[0] == '-' {
-			cleanStr := strings.TrimPrefix(pin, "-")
-			unassignList = append(unassignList, cleanStr)
-		}
-	}
-
-	return
 }
 
 func ValidateTeam(v *validator.Validator, team *Team) {
