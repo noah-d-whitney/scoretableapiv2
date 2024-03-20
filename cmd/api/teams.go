@@ -190,7 +190,10 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 
 	err = app.models.Teams.Update(team)
 	if err != nil {
+		var modelValidationErr data.ModelValidationErr
 		switch {
+		case errors.As(err, &modelValidationErr):
+			app.failedValidationResponse(w, r, modelValidationErr.Errors)
 		case errors.Is(err, data.ErrPlayerNotFound):
 			v.AddError("player_ids", "one or more listed players do not exist")
 			app.failedValidationResponse(w, r, v.Errors)

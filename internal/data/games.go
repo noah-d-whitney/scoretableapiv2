@@ -10,12 +10,6 @@ import (
 	"time"
 )
 
-var (
-	ErrGameNotFound      = errors.New("game could not be found")
-	ErrDuplicateGameTeam = errors.New("duplicate game team")
-	ErrTeamNotInGame     = errors.New("team not assigned to game")
-)
-
 type Game struct {
 	ID           int64      `json:"-"`
 	UserID       int64      `json:"user_id"`
@@ -78,6 +72,17 @@ const (
 	TeamHome GameTeamSide = iota
 	TeamAway
 )
+
+func (s GameTeamSide) String() string {
+	switch s {
+	case 0:
+		return "home"
+	case 1:
+		return "away"
+	default:
+		return ""
+	}
+}
 
 func (m *GameModel) Insert(game *Game) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -157,6 +162,13 @@ func (m *GameModel) Insert(game *Game) error {
 			}
 			return err
 		}
+		game.AwayTeamPin = ""
+		game.HomeTeamPin = ""
+
+		err = checkPlayerConflict(game, tx, ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = tx.Commit()
@@ -228,22 +240,37 @@ func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
 	return nil
 }
 
-// TODO check only two teams per game & team sizes are equal
-func assignGameTeam(gameID, userID int64, teamPin string, teamSide GameTeamSide, tx *sql.Tx,
-	ctx context.Context) error {
+func assignGameTeam(gameID, userID int64, teamPin string, teamSide GameTeamSide,
+	tx *sql.Tx, ctx context.Context) error {
 	getStmt := `
-		SELECT teams.id
+		SELECT teams.id, (SELECT count(*) FROM games_teams WHERE user_id = $1 AND game_id = $2
+			AND side = $3)::int::bool, (SELECT count(*) FROM teams_players WHERE user_id = $1 
+			AND team_id = teams.id), (SELECT team_size FROM games WHERE user_id = $1 AND id = $2)
 		FROM teams
 		JOIN pins ON teams.pin_id = pins.id
-		WHERE pins.pin = $1 AND teams.user_id = $2`
+		WHERE pins.pin = $4 AND teams.user_id = $1`
 
 	var teamID int64
-	err := tx.QueryRowContext(ctx, getStmt, teamPin, userID).Scan(&teamID)
+	var assignedTeam bool
+	var teamSize int64
+	var gameSize int64
+	err := tx.QueryRowContext(ctx, getStmt, userID, gameID, teamSide, teamPin).Scan(&teamID,
+		&assignedTeam, &teamSize, &gameSize)
 	if err != nil {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return rollbackErr
-		}
 		return err
+	}
+
+	if teamSize < gameSize {
+		return ModelValidationErr{Errors: map[string]string{fmt.Sprintf("%s_team_pin",
+			teamSide.String()): fmt.Sprintf("team %s has %d players and game requires %d",
+			teamPin, teamSize, gameSize)}}
+	}
+
+	if assignedTeam {
+		err := unassignGameTeam(gameID, userID, teamSide, tx, ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	stmt := `
@@ -255,15 +282,11 @@ func assignGameTeam(gameID, userID int64, teamPin string, teamSide GameTeamSide,
 	result, err := tx.ExecContext(ctx, stmt, args...)
 	if err != nil {
 		switch {
-		case err.Error() == `pq: insert or update on table "games_teams" violates foreign key `+
-			`constraint "games_teams_game_id_fkey"`:
-			return ErrGameNotFound
-		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
-			`constraint "games_teams_user_id_fkey"`:
-			return ErrUserNotFound
 		case err.Error() == `pq: duplicate key value violates unique constraint `+
 			`"games_teams_pkey"`:
-			return ErrDuplicateGameTeam
+			return ModelValidationErr{Errors: map[string]string{
+				fmt.Sprintf("%s_team_pin", teamSide): "cannot assign same team",
+			}}
 		default:
 			return err
 		}
@@ -277,22 +300,19 @@ func assignGameTeam(gameID, userID int64, teamPin string, teamSide GameTeamSide,
 	return nil
 }
 
-func unassignGameTeam(gameID, userID int64, teamPin string, tx *sql.Tx, ctx context.Context) error {
+func unassignGameTeam(gameID, userID int64, teamSide GameTeamSide, tx *sql.Tx,
+	ctx context.Context) error {
 	stmt := `
 		DELETE FROM games_teams
-		WHERE team_id = (
-				SELECT teams.id
-				FROM teams
-				JOIN pins ON teams.pin_id = pins.id
-				WHERE pins.pin = $1)
-			AND game_id = $2 
-			AND user_id = $3`
+		WHERE user_id = $1 AND game_id = $2 AND side = $3`
 
-	result, err := tx.ExecContext(ctx, stmt, teamPin, gameID, userID)
+	result, err := tx.ExecContext(ctx, stmt, userID, gameID, teamSide)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return ErrTeamNotInGame
+			return ModelValidationErr{Errors: map[string]string{
+				fmt.Sprintf("%s_team_pin", teamSide): "no team assigned to side",
+			}}
 		default:
 			return err
 		}
@@ -303,13 +323,13 @@ func unassignGameTeam(gameID, userID int64, teamPin string, tx *sql.Tx, ctx cont
 		return err
 	}
 	if rowsAffected != 1 {
-		return ErrTeamNotInGame
+		return ModelValidationErr{Errors: map[string]string{
+			fmt.Sprintf("%s_team_pin", teamSide): "no team assigned to side",
+		}}
 	}
 
 	return nil
 }
-
-// TODO check if teams are big enough for game
 
 func ValidateGame(v *validator.Validator, game *Game) {
 	v.Check(game.DateTime != nil, "date_time", "must be provided")

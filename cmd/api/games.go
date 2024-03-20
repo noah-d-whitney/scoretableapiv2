@@ -3,6 +3,7 @@ package main
 import (
 	"ScoreTableApi/internal/data"
 	"ScoreTableApi/internal/validator"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -48,7 +49,13 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 
 	err = app.models.Games.Insert(game)
 	if err != nil {
-		app.serverErrorResponse(w, r, err)
+		var modelValidationErr data.ModelValidationErr
+		switch {
+		case errors.As(err, &modelValidationErr):
+			app.failedValidationResponse(w, r, modelValidationErr.Errors)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
 		return
 	}
 

@@ -256,6 +256,38 @@ func (m *PlayerModel) Delete(userID int64, pin string) error {
 	return nil
 }
 
+func checkPlayerConflict(game *Game, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		SELECT teams_players.player_id
+		FROM games_teams
+		JOIN teams_players ON games_teams.team_id = teams_players.team_id
+		WHERE teams_players.team_id = $1 
+			OR teams_players.team_id = $2
+		`
+
+	rows, err := tx.QueryContext(ctx, stmt, game.Teams.Home.ID, game.Teams.Away.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	modelValidationErr := ModelValidationErr{Errors: make(map[string]string)}
+	for rows.Next() {
+		var playerID int64
+		err := rows.Scan(&playerID)
+		if err != nil {
+			return err
+		}
+		modelValidationErr.AddError(fmt.Sprintf("player %d", playerID),
+			"is assigned to both teams in same game")
+	}
+	if !modelValidationErr.Valid() {
+		return modelValidationErr
+	}
+
+	return nil
+}
+
 func ValidatePlayer(v *validator.Validator, player *Player) {
 	v.Check(player.FirstName != "", "first_name", "must be provided")
 	v.Check(len(player.FirstName) > 1, "first_name", "must be greater than 1 character")

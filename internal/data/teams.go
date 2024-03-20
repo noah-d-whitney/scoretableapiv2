@@ -77,7 +77,9 @@ func (m *TeamModel) Insert(team *Team) error {
 		switch {
 		case err.Error() == `pq: duplicate key value violates unique constraint`+
 			` "unq_userid_team_name"`:
-			return ErrDuplicateTeamName
+			return ModelValidationErr{Errors: map[string]string{
+				"name": "must not be the same as another team",
+			}}
 		default:
 			return err
 		}
@@ -359,6 +361,46 @@ func (m *TeamModel) Update(team *Team) error {
 		return err
 	}
 	team.Size = len(team.Players)
+
+	checkSizeStmt := `
+		SELECT (count(*) OVER())::int::bool, pins.pin, games.team_size
+		FROM games
+		JOIN games_teams ON games.id = games_teams.game_id
+		JOIN pins ON games.pin_id = pins.id
+		WHERE games_teams.user_id = $1 AND games_teams.team_id = $2 AND games.team_size > $3`
+
+	rows, err := tx.QueryContext(ctx, checkSizeStmt, team.UserID, team.ID, team.Size)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			break
+		default:
+			return err
+		}
+	}
+	defer rows.Close()
+
+	var sizeInvalid bool
+	valErr := ModelValidationErr{Errors: make(map[string]string)}
+	for rows.Next() {
+		var gamePin string
+		var gameSize int64
+		err := rows.Scan(&sizeInvalid, &gamePin, &gameSize)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
+		valErr.AddError(fmt.Sprintf("game %s", gamePin),
+			fmt.Sprintf("not enough players (%d) for game (%d needed)", team.Size, gameSize))
+	}
+	if !valErr.Valid() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return valErr
+	}
 
 	err = tx.Commit()
 	if err != nil {
