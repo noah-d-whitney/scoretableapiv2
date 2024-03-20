@@ -1,0 +1,2 @@
+ALTER TABLE IF EXISTS games_teams
+ADD side integer NOT NULL DEFAULT 0;

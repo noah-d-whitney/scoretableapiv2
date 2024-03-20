@@ -21,16 +21,17 @@ var (
 )
 
 type Team struct {
-	ID        int64     `json:"-"`
-	PinID     pins.Pin  `json:"pin"`
-	UserID    int64     `json:"-"`
-	Name      string    `json:"name"`
-	Size      int       `json:"size"`
-	CreatedAt time.Time `json:"-"`
-	Version   int32     `json:"-"`
-	IsActive  bool      `json:"is_active"`
-	PlayerIDs []string  `json:"-"`
-	Players   []*Player `json:"players,omitempty"`
+	ID        int64        `json:"-"`
+	PinID     pins.Pin     `json:"pin"`
+	UserID    int64        `json:"-"`
+	Name      string       `json:"name"`
+	Size      int          `json:"size"`
+	CreatedAt time.Time    `json:"-"`
+	Version   int32        `json:"-"`
+	IsActive  bool         `json:"is_active"`
+	PlayerIDs []string     `json:"-"`
+	Players   []*Player    `json:"players,omitempty"`
+	Side      GameTeamSide `json:"-"`
 }
 
 type TeamModel struct {

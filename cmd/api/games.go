@@ -16,6 +16,8 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 		PeriodLength *int64     `json:"period_length"`
 		PeriodCount  *int64     `json:"period_count"`
 		ScoreTarget  *int64     `json:"score_target"`
+		HomeTeamPin  string     `json:"home_team_pin"`
+		AwayTeamPin  string     `json:"away_team_pin"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -35,6 +37,8 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 		PeriodLength: input.PeriodLength,
 		PeriodCount:  input.PeriodCount,
 		ScoreTarget:  input.ScoreTarget,
+		HomeTeamPin:  input.HomeTeamPin,
+		AwayTeamPin:  input.AwayTeamPin,
 	}
 
 	if data.ValidateGame(v, game); !v.Valid() {

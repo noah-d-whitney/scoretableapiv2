@@ -29,8 +29,12 @@ type Game struct {
 	PeriodLength *int64     `json:"period_length,omitempty"`
 	PeriodCount  *int64     `json:"period_count,omitempty"`
 	ScoreTarget  *int64     `json:"score_target,omitempty"`
-	TeamIDs      []string   `json:"team_ids,omitempty"`
-	Teams        []*Team    `json:"teams"`
+	HomeTeamPin  string     `json:"home_team_pin,omitempty"`
+	AwayTeamPin  string     `json:"away_team_pin,omitempty"`
+	Teams        struct {
+		Home *Team `json:"home,omitempty"`
+		Away *Team `json:"away,omitempty"`
+	} `json:"teams,omitempty"`
 }
 
 type GameStatus int64
@@ -68,6 +72,13 @@ const (
 	GameTypeTarget GameType = "target"
 )
 
+type GameTeamSide int64
+
+const (
+	TeamHome GameTeamSide = iota
+	TeamAway
+)
+
 func (m *GameModel) Insert(game *Game) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -88,7 +99,6 @@ func (m *GameModel) Insert(game *Game) error {
 		return err
 	}
 	game.PinID = *pin
-	game.Teams = []*Team{}
 
 	stmt := `
 		INSERT INTO games (user_id, pin_id, date_time, team_size, 
@@ -119,15 +129,33 @@ func (m *GameModel) Insert(game *Game) error {
 		return err
 	}
 
-	if len(game.TeamIDs) > 0 {
-		for _, teamPin := range game.TeamIDs {
-			err := assignGameTeam(game.ID, game.UserID, teamPin, tx, ctx)
-			if err != nil {
-				if rollbackErr := tx.Rollback(); rollbackErr != nil {
-					return rollbackErr
-				}
-				return err
+	if game.HomeTeamPin != "" {
+		err := assignGameTeam(game.ID, game.UserID, game.HomeTeamPin, TeamHome, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
 			}
+			return err
+		}
+	}
+
+	if game.AwayTeamPin != "" {
+		err := assignGameTeam(game.ID, game.UserID, game.AwayTeamPin, TeamAway, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
+	}
+
+	if game.AwayTeamPin != "" || game.HomeTeamPin != "" {
+		err := getGameTeams(game, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
 		}
 	}
 
@@ -145,7 +173,7 @@ func (m *GameModel) Insert(game *Game) error {
 func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name, 
-			teams.created_at, teams.version, teams.is_active, (
+			teams.created_at, teams.version, teams.is_active, games_teams.side, (
 				SELECT count(*)
 				FROM teams_players
 				WHERE teams_players.user_id = $1 AND teams_players.team_id = teams.id)	
@@ -167,7 +195,6 @@ func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
 	}
 	defer rows.Close()
 
-	teams := []*Team{}
 	for rows.Next() {
 		var team Team
 		err := rows.Scan(
@@ -180,23 +207,30 @@ func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
 			&team.CreatedAt,
 			&team.Version,
 			&team.IsActive,
+			&team.Side,
 			&team.Size,
 		)
 		if err != nil {
 			return err
 		}
-		teams = append(teams, &team)
+		if team.Side == TeamHome {
+			game.Teams.Home = &team
+		}
+		if team.Side == TeamAway {
+			game.Teams.Away = &team
+		}
 	}
 
 	if err = rows.Err(); err != nil {
 		return err
 	}
 
-	game.Teams = teams
 	return nil
 }
 
-func assignGameTeam(gameID, userID int64, teamPin string, tx *sql.Tx, ctx context.Context) error {
+// TODO check only two teams per game & team sizes are equal
+func assignGameTeam(gameID, userID int64, teamPin string, teamSide GameTeamSide, tx *sql.Tx,
+	ctx context.Context) error {
 	getStmt := `
 		SELECT teams.id
 		FROM teams
@@ -213,10 +247,10 @@ func assignGameTeam(gameID, userID int64, teamPin string, tx *sql.Tx, ctx contex
 	}
 
 	stmt := `
-		INSERT INTO games_teams (user_id, game_id, team_id)
-		VALUES ($1, $2, $3)`
+		INSERT INTO games_teams (user_id, game_id, team_id, side)
+		VALUES ($1, $2, $3, $4)`
 
-	args := []any{userID, gameID, teamID}
+	args := []any{userID, gameID, teamID, teamSide}
 
 	result, err := tx.ExecContext(ctx, stmt, args...)
 	if err != nil {
@@ -275,10 +309,16 @@ func unassignGameTeam(gameID, userID int64, teamPin string, tx *sql.Tx, ctx cont
 	return nil
 }
 
+// TODO check if teams are big enough for game
+
 func ValidateGame(v *validator.Validator, game *Game) {
 	v.Check(game.DateTime != nil, "date_time", "must be provided")
 	v.Check(game.TeamSize != nil, "team_size", "must be provided")
 	v.Check(game.Type != nil, "type", "must be provided")
+	if game.HomeTeamPin == game.AwayTeamPin {
+		v.AddError("home_team_pin", "cannot match away team")
+		v.AddError("away_team_pin", "cannot match home team")
+	}
 	if !v.Valid() {
 		return
 	}

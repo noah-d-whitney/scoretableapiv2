@@ -23,6 +23,12 @@ confirm:
 run/api:
 	@go run ./cmd/api -db-dsn=${SCORETABLE_DSN}
 
+## run/api/dev: run the cmd/api application with live reload
+.PHONY: run/api/dev
+run/api/dev:
+	@echo 'Starting dev server'
+	@air -c .air.toml
+
 ## db/psql: connect to the database using psql
 .PHONY: db/psql
 db/psql:
@@ -72,4 +78,5 @@ vendor:
 .PHONY: build/api
 build/api:
 	@echo 'Building cmd/api...'
+	@echo ${SCORETABLE_DSN}
 	go build -ldflags='-s' -o=./bin/api ./cmd/api

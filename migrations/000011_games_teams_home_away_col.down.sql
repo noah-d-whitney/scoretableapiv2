@@ -1,0 +1,2 @@
+ALTER TABLE IF EXISTS games_teams
+DROP COLUMN IF EXISTS side;
