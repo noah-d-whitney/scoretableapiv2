@@ -24,6 +24,9 @@ type Player struct {
 	LineupPos  *int      `json:"lineup_pos,omitempty"`
 }
 
+// TODO add player status (injured, unavailable, etc)
+// and make game unavailable to start until lineup is changed
+
 type PlayerModel struct {
 	db *sql.DB
 }

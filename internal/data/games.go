@@ -11,20 +11,20 @@ import (
 )
 
 type Game struct {
-	ID           int64      `json:"-"`
-	UserID       int64      `json:"user_id"`
-	PinID        pins.Pin   `json:"pin_id"`
-	CreatedAt    time.Time  `json:"-"`
-	Version      int64      `json:"-"`
-	Status       GameStatus `json:"status"`
-	DateTime     *time.Time `json:"date_time"`
-	TeamSize     *int64     `json:"team_size"`
-	Type         *GameType  `json:"type"`
-	PeriodLength *int64     `json:"period_length,omitempty"`
-	PeriodCount  *int64     `json:"period_count,omitempty"`
-	ScoreTarget  *int64     `json:"score_target,omitempty"`
-	HomeTeamPin  string     `json:"home_team_pin,omitempty"`
-	AwayTeamPin  string     `json:"away_team_pin,omitempty"`
+	ID           int64         `json:"-"`
+	UserID       int64         `json:"user_id"`
+	PinID        pins.Pin      `json:"pin_id"`
+	CreatedAt    time.Time     `json:"-"`
+	Version      int64         `json:"-"`
+	Status       GameStatus    `json:"status"`
+	DateTime     *time.Time    `json:"date_time"`
+	TeamSize     *int64        `json:"team_size"`
+	Type         *GameType     `json:"type"`
+	PeriodLength *PeriodLength `json:"period_length,omitempty"`
+	PeriodCount  *int64        `json:"period_count,omitempty"`
+	ScoreTarget  *int64        `json:"score_target,omitempty"`
+	HomeTeamPin  string        `json:"home_team_pin,omitempty"`
+	AwayTeamPin  string        `json:"away_team_pin,omitempty"`
 	Teams        struct {
 		Home *Team `json:"home,omitempty"`
 		Away *Team `json:"away,omitempty"`
@@ -39,6 +39,15 @@ const (
 	FINISHED
 	CANCELED
 )
+
+type PeriodLength int64
+
+func (pl PeriodLength) MarshalJSON() ([]byte, error) {
+	m := pl / 60
+	s := pl % 60
+	json := fmt.Sprintf(`"%d:%d"`, m, s)
+	return []byte(json), nil
+}
 
 func (s GameStatus) MarshalJSON() ([]byte, error) {
 	switch s {

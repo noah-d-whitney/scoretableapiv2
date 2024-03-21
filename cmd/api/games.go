@@ -37,7 +37,7 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 		DateTime:     input.DateTime,
 		TeamSize:     input.TeamSize,
 		Type:         (*data.GameType)(input.Type),
-		PeriodLength: input.PeriodLength,
+		PeriodLength: (*data.PeriodLength)(input.PeriodLength),
 		PeriodCount:  input.PeriodCount,
 		ScoreTarget:  input.ScoreTarget,
 		HomeTeamPin:  input.HomeTeamPin,
