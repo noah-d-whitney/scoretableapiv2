@@ -21,6 +21,7 @@ type Player struct {
 	Version    int32     `json:"-"`
 	IsActive   bool      `json:"is_active"`
 	Number     int       `json:"number,omitempty"`
+	LineupPos  *int      `json:"lineup_pos,omitempty"`
 }
 
 type PlayerModel struct {
@@ -84,7 +85,7 @@ func (m *PlayerModel) Get(userId int64, pin string) (*Player, error) {
 			players.pref_number, players.created_at, players.version, (
 				SELECT count(*)::int::bool
 					FROM teams_players
-					WHERE player_id = players.id)
+					WHERE player_id = players.id AND lineup_number IS NOT NULL)
 		FROM pins
 		JOIN players ON pins.id = players.pin_id
 		WHERE pins.pin = $1 AND players.user_id = $2 AND pins.scope = $3`

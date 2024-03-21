@@ -22,18 +22,19 @@ var (
 )
 
 type Team struct {
-	ID         int64          `json:"-"`
-	PinID      pins.Pin       `json:"pin"`
-	UserID     int64          `json:"-"`
-	Name       string         `json:"name"`
-	Size       int            `json:"size"`
-	CreatedAt  time.Time      `json:"-"`
-	Version    int32          `json:"-"`
-	IsActive   bool           `json:"is_active"`
-	PlayerIDs  []string       `json:"-"`
-	Players    []*Player      `json:"players,omitempty"`
-	PlayerNums map[string]int `json:"player_nums,omitempty"`
-	Side       GameTeamSide   `json:"-"`
+	ID           int64          `json:"-"`
+	PinID        pins.Pin       `json:"pin"`
+	UserID       int64          `json:"-"`
+	Name         string         `json:"name"`
+	Size         int            `json:"size"`
+	CreatedAt    time.Time      `json:"-"`
+	Version      int32          `json:"-"`
+	IsActive     bool           `json:"is_active"`
+	PlayerIDs    []string       `json:"-"`
+	Players      []*Player      `json:"players,omitempty"`
+	PlayerNums   map[string]int `json:"-"`
+	PlayerLineup []string       `json:"-"`
+	Side         GameTeamSide   `json:"-"`
 }
 
 type TeamModel struct {
@@ -85,9 +86,23 @@ func (m *TeamModel) Insert(team *Team) error {
 		}
 	}
 
+	if len(team.PlayerIDs) == 0 && len(team.PlayerLineup) != 0 {
+		return NewModelValidationErr("player_lineup", "no players to assign to lineup")
+	}
+
 	if len(team.PlayerIDs) != 0 {
 		for _, p := range team.PlayerIDs {
 			err := assignPlayer(team, p, tx, ctx)
+			if err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return rollbackErr
+				}
+				return err
+			}
+		}
+
+		if len(team.PlayerLineup) != 0 {
+			err := assignTeamLineup(team, tx, ctx)
 			if err != nil {
 				if rollbackErr := tx.Rollback(); rollbackErr != nil {
 					return rollbackErr
@@ -368,6 +383,8 @@ func (m *TeamModel) Update(team *Team) error {
 		}
 	}
 
+	team.PlayerIDs = nil
+
 	if len(team.PlayerNums) != 0 {
 		err := editPlayerNumbers(team, tx, ctx)
 		if err != nil {
@@ -377,6 +394,20 @@ func (m *TeamModel) Update(team *Team) error {
 			return err
 		}
 	}
+
+	team.PlayerNums = nil
+
+	if len(team.PlayerLineup) != 0 {
+		err := assignTeamLineup(team, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
+	}
+
+	team.PlayerLineup = nil
 
 	err = getTeamPlayers(team, tx, ctx)
 	if err != nil {
@@ -508,8 +539,6 @@ func editPlayerNumbers(team *Team, tx *sql.Tx, ctx context.Context) error {
 	return nil
 }
 
-// TODO assign lineup #
-
 func assignPlayer(team *Team, playerPin string, tx *sql.Tx, ctx context.Context) error {
 	getStmt := `
 		SELECT players.id, players.pref_number
@@ -532,13 +561,13 @@ func assignPlayer(team *Team, playerPin string, tx *sql.Tx, ctx context.Context)
 	if num, exists := team.PlayerNums[playerPin]; exists {
 		number = num
 	}
-	println(number)
 
 	stmt := `
 		INSERT INTO teams_players (player_id, team_id, user_id, player_number, lineup_number)
 		VALUES ($1, $2, $3, $4, $5)`
 
 	args := []any{playerID, team.ID, team.UserID, number, nil}
+	println(playerID)
 
 	result, err := tx.ExecContext(ctx, stmt, args...)
 	if err != nil {
@@ -566,8 +595,6 @@ func assignPlayer(team *Team, playerPin string, tx *sql.Tx, ctx context.Context)
 	}
 
 	team.Size++
-	delete(team.PlayerNums, playerPin)
-	team.PlayerIDs = removePinFromSlice(team.PlayerIDs, playerPin)
 
 	return nil
 }
@@ -606,24 +633,71 @@ func unassignPlayer(team *Team, playerPin string, tx *sql.Tx, ctx context.Contex
 	}
 
 	team.Size--
-	team.PlayerIDs = removePinFromSlice(team.PlayerIDs, "-"+playerPin)
 
+	return nil
+}
+
+func assignTeamLineup(team *Team, tx *sql.Tx, ctx context.Context) error {
+	resetLineupStmt := `
+		UPDATE teams_players
+		SET lineup_number = null
+		WHERE user_id = $1 AND team_id = $2`
+
+	_, err := tx.ExecContext(ctx, resetLineupStmt, team.UserID, team.ID)
+	if err != nil {
+		return err
+	}
+
+	stmt := `
+		UPDATE teams_players
+		SET lineup_number = $1
+		WHERE user_id = $2 AND team_id = $3 AND player_id = (
+			SELECT players.id
+			FROM players
+			JOIN pins ON pins.id = players.pin_id
+			WHERE pins.pin = $4)`
+
+	for i, p := range team.PlayerLineup {
+		args := []any{i + 1, team.UserID, team.ID, p}
+		result, err := tx.ExecContext(ctx, stmt, args...)
+		if err != nil {
+			switch {
+			case errors.Is(err, sql.ErrNoRows):
+				return NewModelValidationErr("player_lineup", fmt.Sprintf(
+					"player (%s) at lineup #%d could not be found on team", p, i))
+			default:
+				return err
+			}
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rowsAffected != 1 {
+			return NewModelValidationErr("player_lineup", fmt.Sprintf(
+				"player (%s) at lineup #%d could not be found on team", p, i))
+		}
+	}
+
+	team.PlayerLineup = nil
 	return nil
 }
 
 func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		SELECT pins.id, pins.pin, pins.scope, players.id, players.user_id, players.first_name, 
-			players.last_name, players.is_active, players.created_at, players.version, (
-				SELECT player_number
-				FROM teams_players
-				WHERE user_id = $1 AND team_id = $2 AND player_id = players.id)	
-		FROM teams_players
-		JOIN players ON teams_players.player_id = players.id
-		JOIN teams ON teams_players.team_id = teams.id
-		JOIN pins ON players.pin_id = pins.id
-		WHERE teams.user_id = $1 AND teams.id = $2
-		ORDER BY players.last_name`
+			players.last_name, players.created_at, players.version, 
+			teams_players.player_number, teams_players.lineup_number, (
+				SELECT count(*)::int::bool
+					FROM teams_players
+					WHERE player_id = players.id AND lineup_number IS NOT NULL)	
+			FROM teams_players
+				JOIN players ON teams_players.player_id = players.id
+				JOIN teams ON teams_players.team_id = teams.id
+				JOIN pins ON players.pin_id = pins.id
+				WHERE teams.user_id = $1 AND teams.id = $2
+				ORDER BY teams_players.lineup_number, players.last_name`
 
 	rows, err := tx.QueryContext(ctx, stmt, team.UserID, team.ID)
 	if err != nil {
@@ -647,10 +721,11 @@ func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 			&player.UserId,
 			&player.FirstName,
 			&player.LastName,
-			&player.IsActive,
 			&player.CreatedAt,
 			&player.Version,
 			&player.Number,
+			&player.LineupPos,
+			&player.IsActive,
 		)
 		if err != nil {
 			return err

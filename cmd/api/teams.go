@@ -13,9 +13,10 @@ import (
 
 func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Name       string         `json:"name"`
-		PlayerIDs  []string       `json:"player_ids"`
-		PlayerNums map[string]int `json:"player_nums"`
+		Name         string         `json:"name"`
+		PlayerIDs    []string       `json:"player_ids"`
+		PlayerNums   map[string]int `json:"player_nums"`
+		PlayerLineup []string       `json:"player_lineup"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -25,9 +26,10 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	team := &data.Team{
-		Name:       input.Name,
-		PlayerIDs:  input.PlayerIDs,
-		PlayerNums: input.PlayerNums,
+		Name:         input.Name,
+		PlayerIDs:    input.PlayerIDs,
+		PlayerNums:   input.PlayerNums,
+		PlayerLineup: input.PlayerLineup,
 	}
 
 	v := validator.New()
@@ -146,10 +148,11 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Name       *string        `json:"name"`
-		IsActive   *bool          `json:"is_active"`
-		PlayerIDs  []string       `json:"player_ids"`
-		PlayerNums map[string]int `json:"player_nums"`
+		Name         *string        `json:"name"`
+		IsActive     *bool          `json:"is_active"`
+		PlayerIDs    []string       `json:"player_ids"`
+		PlayerNums   map[string]int `json:"player_nums"`
+		PlayerLineup []string       `json:"player_lineup"`
 	}
 
 	err = app.readJSON(w, r, &input)
@@ -181,6 +184,9 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.PlayerNums != nil {
 		team.PlayerNums = input.PlayerNums
+	}
+	if input.PlayerLineup != nil {
+		team.PlayerLineup = input.PlayerLineup
 	}
 
 	if data.ValidateTeam(v, team); !v.Valid() {

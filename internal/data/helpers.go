@@ -1,7 +1,6 @@
 package data
 
 import (
-	"slices"
 	"strings"
 )
 
@@ -16,9 +15,4 @@ func parsePinList(pins []string) (assignList []string, unassignList []string) {
 	}
 
 	return
-}
-
-func removePinFromSlice(s []string, pin string) []string {
-	i := slices.Index(s, pin)
-	return append(s[:i], s[i+1:]...)
 }
