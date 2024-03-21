@@ -12,12 +12,12 @@ import (
 )
 
 var (
-	ErrDuplicateTeamName = errors.New("duplicate team name")
-	ErrPlayerNotFound    = errors.New("player(s) not found")
-	ErrTeamNotFound      = errors.New("team not found")
-	ErrUserNotFound      = errors.New("user not found")
-	ErrDuplicatePlayer   = errors.New("duplicate player team assignment")
-	ErrPlayerNotOnTeam   = errors.New("player not found on team")
+	ErrDuplicateTeamName = NewModelValidationErr("name", "must be unique")
+	ErrPlayerNotFound    = NewModelValidationErr("player_ids",
+		"one or more player could not be found")
+	ErrDuplicatePlayer = NewModelValidationErr("player_ids",
+		"cannot assign player to same team more than once")
+	ErrPlayerNotOnTeam = NewModelValidationErr("player_ids", "cannot find player on team")
 )
 
 type Team struct {
@@ -77,9 +77,7 @@ func (m *TeamModel) Insert(team *Team) error {
 		switch {
 		case err.Error() == `pq: duplicate key value violates unique constraint`+
 			` "unq_userid_team_name"`:
-			return ModelValidationErr{Errors: map[string]string{
-				"name": "must not be the same as another team",
-			}}
+			return ErrDuplicateTeamName
 		default:
 			return err
 		}
@@ -320,7 +318,13 @@ func (m *TeamModel) Update(team *Team) error {
 
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		switch {
+		case err.Error() == `pq: duplicate key value violates unique constraint
+			"unq_userid_team_name"`:
+			return NewModelValidationErr("name", "must be unique for all teams")
+		default:
+			return err
+		}
 	}
 
 	err = tx.QueryRowContext(ctx, stmt, args...).Scan(&team.Version)
@@ -335,6 +339,14 @@ func (m *TeamModel) Update(team *Team) error {
 
 	for _, pin := range assign {
 		err := assignPlayer(team.ID, team.UserID, pin, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
+
+		err = checkPlayerConflict(team.UserID, pin, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
@@ -443,15 +455,12 @@ func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx contex
 	result, err := tx.ExecContext(ctx, stmt, args...)
 	if err != nil {
 		switch {
-		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
-			`constraint "teams_players_team_id_fkey"`:
-			return ErrTeamNotFound
-		case err.Error() == `pq: insert or update on table "teams_players" violates foreign key `+
-			`constraint "teams_players_user_id_fkey"`:
-			return ErrUserNotFound
 		case err.Error() == `pq: duplicate key value violates unique constraint `+
 			`"teams_players_pkey"`:
-			return ErrDuplicatePlayer
+			e := ErrDuplicatePlayer
+			e.Errors["player_ids"] = fmt.Sprintf("cannot assign player %s to team more than once",
+				playerPin)
+			return e
 		default:
 			return err
 		}
@@ -480,7 +489,9 @@ func unassignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx cont
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return ErrPlayerNotOnTeam
+			e := ErrPlayerNotOnTeam
+			e.Errors["player_ids"] = fmt.Sprintf("player %s is not on team", playerPin)
+			return e
 		default:
 			return err
 		}
@@ -491,7 +502,9 @@ func unassignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx cont
 		return err
 	}
 	if rowsAffected != 1 {
-		return ErrPlayerNotOnTeam
+		e := ErrPlayerNotOnTeam
+		e.Errors["player_ids"] = fmt.Sprintf("player %s is not on team", playerPin)
+		return e
 	}
 
 	return nil

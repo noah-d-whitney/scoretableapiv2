@@ -38,16 +38,10 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 
 	err = app.models.Teams.Insert(team)
 	if err != nil {
+		var modelValidationErr data.ModelValidationErr
 		switch {
-		case errors.Is(err, data.ErrDuplicateTeamName):
-			v.AddError("name", "must be unique")
-			app.failedValidationResponse(w, r, v.Errors)
-		case errors.Is(err, data.ErrDuplicatePlayer):
-			v.AddError("player_ids", "must not have duplicate player ids")
-			app.failedValidationResponse(w, r, v.Errors)
-		case errors.Is(err, data.ErrPlayerNotFound):
-			v.AddError("player_ids", "one or more player could not be found")
-			app.failedValidationResponse(w, r, v.Errors)
+		case errors.As(err, &modelValidationErr):
+			app.failedValidationResponse(w, r, modelValidationErr.Errors)
 		case errors.Is(err, data.ErrEditConflict):
 			app.editConflictResponse(w, r)
 		default:
@@ -194,16 +188,6 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &modelValidationErr):
 			app.failedValidationResponse(w, r, modelValidationErr.Errors)
-		case errors.Is(err, data.ErrPlayerNotFound):
-			v.AddError("player_ids", "one or more listed players do not exist")
-			app.failedValidationResponse(w, r, v.Errors)
-		case errors.Is(err, data.ErrDuplicatePlayer):
-			v.AddError("player_ids",
-				"one or more players for assignment are already assigned to team")
-			app.failedValidationResponse(w, r, v.Errors)
-		case errors.Is(err, data.ErrPlayerNotOnTeam):
-			v.AddError("player_ids", "one or more players for unassignment are not found on team")
-			app.failedValidationResponse(w, r, v.Errors)
 		case errors.Is(err, data.ErrEditConflict):
 			app.editConflictResponse(w, r)
 		default:

@@ -165,7 +165,7 @@ func (m *GameModel) Insert(game *Game) error {
 		game.AwayTeamPin = ""
 		game.HomeTeamPin = ""
 
-		err = checkPlayerConflict(game, tx, ctx)
+		err = checkTeamConflict(game, tx, ctx)
 		if err != nil {
 			return err
 		}
