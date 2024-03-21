@@ -16,10 +16,11 @@ type Player struct {
 	UserId     int64     `json:"-"`
 	FirstName  string    `json:"first_name"`
 	LastName   string    `json:"last_name"`
-	PrefNumber int       `json:"pref_number"`
+	PrefNumber int       `json:"pref_number,omitempty"`
 	CreatedAt  time.Time `json:"-"`
 	Version    int32     `json:"-"`
 	IsActive   bool      `json:"is_active"`
+	Number     int       `json:"number,omitempty"`
 }
 
 type PlayerModel struct {
@@ -80,7 +81,10 @@ func (m *PlayerModel) Insert(player *Player) error {
 func (m *PlayerModel) Get(userId int64, pin string) (*Player, error) {
 	stmt := `
 		SELECT pins.id, pins.pin, pins.scope, players.id, players.first_name, players.last_name, 
-			players.pref_number, players.created_at, players.version, players.is_active
+			players.pref_number, players.created_at, players.version, (
+				SELECT count(*)::int::bool
+					FROM teams_players
+					WHERE player_id = players.id)
 		FROM pins
 		JOIN players ON pins.id = players.pin_id
 		WHERE pins.pin = $1 AND players.user_id = $2 AND pins.scope = $3`
@@ -119,7 +123,10 @@ func (m *PlayerModel) GetAll(userID int64, name string, filters Filters) ([]*Pla
 	error) {
 	stmt := fmt.Sprintf(`
 		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, players.id, players.first_name, players.last_name, 
-			players.pref_number, players.created_at, players.version, players.is_active 
+			players.pref_number, players.created_at, players.version, (
+				SELECT count(*)::int::bool
+					FROM teams_players
+					WHERE player_id = players.id)
 		FROM players
 		INNER JOIN pins ON players.pin_id = pins.id
 		WHERE (user_id = $1 AND to_tsvector('simple', first_name) @@ plainto_tsquery('simple', $2) 

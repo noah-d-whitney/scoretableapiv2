@@ -18,20 +18,22 @@ var (
 	ErrDuplicatePlayer = NewModelValidationErr("player_ids",
 		"cannot assign player to same team more than once")
 	ErrPlayerNotOnTeam = NewModelValidationErr("player_ids", "cannot find player on team")
+	ErrPlayerNumNotUnq = NewModelValidationErr("player_ids", "duplicate player number on team")
 )
 
 type Team struct {
-	ID        int64        `json:"-"`
-	PinID     pins.Pin     `json:"pin"`
-	UserID    int64        `json:"-"`
-	Name      string       `json:"name"`
-	Size      int          `json:"size"`
-	CreatedAt time.Time    `json:"-"`
-	Version   int32        `json:"-"`
-	IsActive  bool         `json:"is_active"`
-	PlayerIDs []string     `json:"-"`
-	Players   []*Player    `json:"players,omitempty"`
-	Side      GameTeamSide `json:"-"`
+	ID         int64          `json:"-"`
+	PinID      pins.Pin       `json:"pin"`
+	UserID     int64          `json:"-"`
+	Name       string         `json:"name"`
+	Size       int            `json:"size"`
+	CreatedAt  time.Time      `json:"-"`
+	Version    int32          `json:"-"`
+	IsActive   bool           `json:"is_active"`
+	PlayerIDs  []string       `json:"-"`
+	Players    []*Player      `json:"players,omitempty"`
+	PlayerNums map[string]int `json:"player_nums,omitempty"`
+	Side       GameTeamSide   `json:"-"`
 }
 
 type TeamModel struct {
@@ -85,7 +87,7 @@ func (m *TeamModel) Insert(team *Team) error {
 
 	if len(team.PlayerIDs) != 0 {
 		for _, p := range team.PlayerIDs {
-			err := assignPlayer(team.ID, team.UserID, p, tx, ctx)
+			err := assignPlayer(team, p, tx, ctx)
 			if err != nil {
 				if rollbackErr := tx.Rollback(); rollbackErr != nil {
 					return rollbackErr
@@ -319,9 +321,9 @@ func (m *TeamModel) Update(team *Team) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		switch {
-		case err.Error() == `pq: duplicate key value violates unique constraint
-			"unq_userid_team_name"`:
-			return NewModelValidationErr("name", "must be unique for all teams")
+		case err.Error() == `pq: duplicate key value violates unique constraint`+
+			`"unq_userid_team_name"`:
+			return ErrDuplicateTeamName
 		default:
 			return err
 		}
@@ -335,10 +337,11 @@ func (m *TeamModel) Update(team *Team) error {
 		return err
 	}
 
+	// ASSIGN AND UNASSIGN PLAYERS
 	assign, unassign := parsePinList(team.PlayerIDs)
 
 	for _, pin := range assign {
-		err := assignPlayer(team.ID, team.UserID, pin, tx, ctx)
+		err := assignPlayer(team, pin, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
@@ -356,7 +359,17 @@ func (m *TeamModel) Update(team *Team) error {
 	}
 
 	for _, pin := range unassign {
-		err := unassignPlayer(team.ID, team.UserID, pin, tx, ctx)
+		err := unassignPlayer(team, pin, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
+			return err
+		}
+	}
+
+	if len(team.PlayerNums) != 0 {
+		err := editPlayerNumbers(team, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
@@ -372,7 +385,6 @@ func (m *TeamModel) Update(team *Team) error {
 		}
 		return err
 	}
-	team.Size = len(team.Players)
 
 	checkSizeStmt := `
 		SELECT pins.pin, games.team_size
@@ -426,18 +438,89 @@ func (m *TeamModel) Update(team *Team) error {
 	return nil
 }
 
-// TODO assign lineup #
-// TODO check for team size
+func editPlayerNumbers(team *Team, tx *sql.Tx, ctx context.Context) error {
+	getPinsStmt := `
+		SELECT pins.pin
+			FROM pins
+				JOIN players ON pins.id = players.pin_id
+				JOIN teams_players ON players.id = teams_players.player_id
+			WHERE teams_players.user_id = $1 AND teams_players.team_id = $2`
 
-func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
+	rows, err := tx.QueryContext(ctx, getPinsStmt, team.UserID, team.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	playerPins := make([]string, 0)
+	for rows.Next() {
+		var pin string
+		err := rows.Scan(&pin)
+		if err != nil {
+			return err
+		}
+		playerPins = append(playerPins, pin)
+	}
+
+	assignNumStmt := `
+		UPDATE teams_players
+			SET player_number = $1
+			WHERE user_id = $2 AND team_id = $3 AND player_id = (
+				SELECT players.id
+					FROM players 
+						JOIN pins ON players.pin_id = pins.id
+					WHERE pins.pin = $4)`
+
+	for _, p := range playerPins {
+		if num, exists := team.PlayerNums[p]; exists {
+			if num < 1 {
+				return NewModelValidationErr("player_nums", fmt.Sprintf(`player's (%s) number (`+
+					`%d) must be greater than 0`, p, num))
+			}
+			if num > 99 {
+				return NewModelValidationErr("player_nums", fmt.Sprintf(`player's (%s) number (`+
+					`%d) must be less than 100`, p, num))
+			}
+			args := []any{num, team.UserID, team.ID, p}
+			result, err := tx.ExecContext(ctx, assignNumStmt, args...)
+			if err != nil {
+				switch {
+				case err.Error() == `pq: duplicate key value violates unique constraint `+
+					`"teams_players_player_number_unq"`:
+					e := ErrPlayerNumNotUnq
+					e.Errors["player_ids"] = fmt.Sprintf(`player's (%s) dersired number (%d) is already `+
+						`in use on this team.`, p, num)
+					return e
+				default:
+					return err
+				}
+			}
+
+			rowsAffected, err := result.RowsAffected()
+			if err != nil || rowsAffected != 1 {
+				return err
+			}
+
+			delete(team.PlayerNums, p)
+		}
+	}
+
+	return nil
+}
+
+// TODO assign lineup #
+
+func assignPlayer(team *Team, playerPin string, tx *sql.Tx, ctx context.Context) error {
 	getStmt := `
-		SELECT players.id
+		SELECT players.id, players.pref_number
 		FROM players
 		JOIN public.pins ON pins.id = players.pin_id
 		WHERE pins.pin = $1 AND players.user_id = $2`
 
 	var playerID string
-	err := tx.QueryRowContext(ctx, getStmt, playerPin, userID).Scan(&playerID)
+	var number int
+
+	err := tx.QueryRowContext(ctx, getStmt, playerPin, team.UserID).Scan(&playerID, &number)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -446,11 +529,16 @@ func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx contex
 		return err
 	}
 
-	stmt := `
-		INSERT INTO teams_players (player_id, team_id, user_id)
-		VALUES ($1, $2, $3)`
+	if num, exists := team.PlayerNums[playerPin]; exists {
+		number = num
+	}
+	println(number)
 
-	args := []any{playerID, teamID, userID}
+	stmt := `
+		INSERT INTO teams_players (player_id, team_id, user_id, player_number, lineup_number)
+		VALUES ($1, $2, $3, $4, $5)`
+
+	args := []any{playerID, team.ID, team.UserID, number, nil}
 
 	result, err := tx.ExecContext(ctx, stmt, args...)
 	if err != nil {
@@ -460,6 +548,12 @@ func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx contex
 			e := ErrDuplicatePlayer
 			e.Errors["player_ids"] = fmt.Sprintf("cannot assign player %s to team more than once",
 				playerPin)
+			return e
+		case err.Error() == `pq: duplicate key value violates unique constraint `+
+			`"teams_players_player_number_unq"`:
+			e := ErrPlayerNumNotUnq
+			e.Errors["player_ids"] = fmt.Sprintf(`player's (%s) pref number (%d) is already `+
+				`in use on this team.`, playerPin, number)
 			return e
 		default:
 			return err
@@ -471,10 +565,14 @@ func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx contex
 		return err
 	}
 
+	team.Size++
+	delete(team.PlayerNums, playerPin)
+	team.PlayerIDs = removePinFromSlice(team.PlayerIDs, playerPin)
+
 	return nil
 }
 
-func unassignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
+func unassignPlayer(team *Team, playerPin string, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		DELETE FROM teams_players
 		WHERE player_id = (
@@ -485,7 +583,7 @@ func unassignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx cont
 			AND team_id = $2 
 			AND user_id = $3`
 
-	result, err := tx.ExecContext(ctx, stmt, playerPin, teamID, userID)
+	result, err := tx.ExecContext(ctx, stmt, playerPin, team.ID, team.UserID)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -507,13 +605,19 @@ func unassignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx cont
 		return e
 	}
 
+	team.Size--
+	team.PlayerIDs = removePinFromSlice(team.PlayerIDs, "-"+playerPin)
+
 	return nil
 }
 
 func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		SELECT pins.id, pins.pin, pins.scope, players.id, players.user_id, players.first_name, 
-			players.last_name, players.pref_number, players.is_active, players.created_at, players.version
+			players.last_name, players.is_active, players.created_at, players.version, (
+				SELECT player_number
+				FROM teams_players
+				WHERE user_id = $1 AND team_id = $2 AND player_id = players.id)	
 		FROM teams_players
 		JOIN players ON teams_players.player_id = players.id
 		JOIN teams ON teams_players.team_id = teams.id
@@ -543,10 +647,10 @@ func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 			&player.UserId,
 			&player.FirstName,
 			&player.LastName,
-			&player.PrefNumber,
 			&player.IsActive,
 			&player.CreatedAt,
 			&player.Version,
+			&player.Number,
 		)
 		if err != nil {
 			return err

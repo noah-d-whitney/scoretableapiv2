@@ -13,8 +13,9 @@ import (
 
 func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Name      string   `json:"name"`
-		PlayerIDs []string `json:"player_ids"`
+		Name       string         `json:"name"`
+		PlayerIDs  []string       `json:"player_ids"`
+		PlayerNums map[string]int `json:"player_nums"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -24,8 +25,9 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	team := &data.Team{
-		Name:      input.Name,
-		PlayerIDs: input.PlayerIDs,
+		Name:       input.Name,
+		PlayerIDs:  input.PlayerIDs,
+		PlayerNums: input.PlayerNums,
 	}
 
 	v := validator.New()
@@ -45,7 +47,7 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, data.ErrEditConflict):
 			app.editConflictResponse(w, r)
 		default:
-			app.badRequestResponse(w, r, err)
+			app.serverErrorResponse(w, r, err)
 		}
 		return
 	}
@@ -144,9 +146,10 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Name      *string  `json:"name"`
-		IsActive  *bool    `json:"is_active"`
-		PlayerIDs []string `json:"player_ids"`
+		Name       *string        `json:"name"`
+		IsActive   *bool          `json:"is_active"`
+		PlayerIDs  []string       `json:"player_ids"`
+		PlayerNums map[string]int `json:"player_nums"`
 	}
 
 	err = app.readJSON(w, r, &input)
@@ -175,6 +178,9 @@ func (app *application) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.PlayerIDs != nil {
 		team.PlayerIDs = input.PlayerIDs
+	}
+	if input.PlayerNums != nil {
+		team.PlayerNums = input.PlayerNums
 	}
 
 	if data.ValidateTeam(v, team); !v.Valid() {
