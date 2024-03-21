@@ -375,7 +375,7 @@ func (m *TeamModel) Update(team *Team) error {
 	team.Size = len(team.Players)
 
 	checkSizeStmt := `
-		SELECT (count(*) OVER())::int::bool, pins.pin, games.team_size
+		SELECT pins.pin, games.team_size
 		FROM games
 		JOIN games_teams ON games.id = games_teams.game_id
 		JOIN pins ON games.pin_id = pins.id
@@ -392,12 +392,11 @@ func (m *TeamModel) Update(team *Team) error {
 	}
 	defer rows.Close()
 
-	var sizeInvalid bool
 	valErr := ModelValidationErr{Errors: make(map[string]string)}
 	for rows.Next() {
 		var gamePin string
 		var gameSize int64
-		err := rows.Scan(&sizeInvalid, &gamePin, &gameSize)
+		err := rows.Scan(&gamePin, &gameSize)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
@@ -428,6 +427,7 @@ func (m *TeamModel) Update(team *Team) error {
 }
 
 // TODO assign lineup #
+// TODO check for team size
 
 func assignPlayer(teamID, userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
 	getStmt := `
@@ -560,6 +560,61 @@ func getTeamPlayers(team *Team, tx *sql.Tx, ctx context.Context) error {
 
 	team.Players = players
 	team.Size = len(players)
+	return nil
+}
+
+func checkPlayerConflict(userID int64, playerPin string, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		SELECT pins.pin
+			FROM games_teams
+        		JOIN teams_players ON games_teams.team_id = teams_players.team_id
+        		JOIN games ON games_teams.game_id = games.id
+        		JOIN pins ON games.pin_id = pins.id
+			WHERE games_teams.user_id = $1
+  				AND teams_players.player_id = (
+					SELECT players.id
+						FROM players
+							JOIN pins ON players.pin_id = pins.id
+							WHERE pins.pin = $2)		
+    			AND games_teams.side = 0
+		INTERSECT SELECT pins.pin
+			FROM games_teams
+    			JOIN teams_players ON games_teams.team_id = teams_players.team_id
+    			JOIN games ON games_teams.game_id = games.id
+    			JOIN pins ON games.pin_id = pins.id
+			WHERE games_teams.user_id = $1
+  				AND teams_players.player_id = (
+					SELECT players.id
+						FROM players
+							JOIN pins ON players.pin_id = pins.id
+							WHERE pins.pin = $2)		
+  				AND games_teams.side = 1`
+
+	rows, err := tx.QueryContext(ctx, stmt, userID, playerPin)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	modelValidationErr := ModelValidationErr{Errors: make(map[string]string)}
+	gamePins := make([]string, 0)
+	for rows.Next() {
+		var gamePin string
+		err := rows.Scan(&gamePin)
+		if err != nil {
+			return err
+		}
+		gamePins = append(gamePins, gamePin)
+	}
+
+	for _, p := range gamePins {
+		modelValidationErr.AddError(fmt.Sprintf("game %s", p),
+			"player cannot be assigned to both teams in game")
+	}
+	if !modelValidationErr.Valid() {
+		return modelValidationErr
+	}
+
 	return nil
 }
 

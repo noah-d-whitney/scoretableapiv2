@@ -167,6 +167,9 @@ func (m *GameModel) Insert(game *Game) error {
 
 		err = checkTeamConflict(game, tx, ctx)
 		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return rollbackErr
+			}
 			return err
 		}
 	}
@@ -180,6 +183,77 @@ func (m *GameModel) Insert(game *Game) error {
 	}
 
 	return nil
+}
+
+func (m *GameModel) Get(userID int64, pin string) (*Game, error) {
+	stmt := `
+		SELECT pins.id, pins.pin, pins.scope, games.id, games.user_id, games.created_at, 
+			games.version, games.status, games.date_time, games.team_size, (
+				CASE WHEN games.score_target IS NULL
+					THEN 'timed'
+			    	WHEN games.score_target IS NOT NULL
+					THEN 'target'
+					ELSE ''
+				END),
+			games.period_length, games.period_count, games.score_target
+			FROM games
+			JOIN pins ON games.pin_id = pins.id
+			WHERE games.user_id = $1 AND pins.pin = $2`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	game := &Game{}
+	err = tx.QueryRowContext(ctx, stmt, userID, pin).Scan(
+		&game.PinID.ID,
+		&game.PinID.Pin,
+		&game.PinID.Scope,
+		&game.ID,
+		&game.UserID,
+		&game.CreatedAt,
+		&game.Version,
+		&game.Status,
+		&game.DateTime,
+		&game.TeamSize,
+		&game.Type,
+		&game.PeriodLength,
+		&game.PeriodCount,
+		&game.ScoreTarget,
+	)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, rollbackErr
+		}
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	err = getGameTeams(game, tx, ctx)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, rollbackErr
+		}
+		return nil, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, rollbackErr
+		}
+		return nil, err
+	}
+
+	return game, nil
 }
 
 func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
@@ -326,6 +400,48 @@ func unassignGameTeam(gameID, userID int64, teamSide GameTeamSide, tx *sql.Tx,
 		return ModelValidationErr{Errors: map[string]string{
 			fmt.Sprintf("%s_team_pin", teamSide): "no team assigned to side",
 		}}
+	}
+
+	return nil
+}
+
+func checkTeamConflict(game *Game, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		SELECT pins.pin
+		FROM games_teams
+		JOIN teams_players ON games_teams.team_id = teams_players.team_id
+		JOIN players ON teams_players.player_id = players.id
+		JOIN pins ON players.pin_id = pins.id
+		WHERE teams_players.team_id = $1 
+		INTERSECT SELECT pins.pin
+		FROM games_teams
+		JOIN teams_players ON games_teams.team_id = teams_players.team_id
+		JOIN players ON teams_players.player_id = players.id
+		JOIN pins ON players.pin_id = pins.id
+		WHERE teams_players.team_id = $2
+		`
+
+	rows, err := tx.QueryContext(ctx, stmt, game.Teams.Home.ID, game.Teams.Away.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	modelValidationErr := ModelValidationErr{Errors: make(map[string]string)}
+	playerPins := make([]string, 0)
+	for rows.Next() {
+		var playerPin string
+		err := rows.Scan(&playerPin)
+		if err != nil {
+			return err
+		}
+		playerPins = append(playerPins, playerPin)
+	}
+	for _, p := range playerPins {
+		modelValidationErr.AddError(fmt.Sprintf("player %s", p), "cannot be assigned to both teams in game")
+	}
+	if !modelValidationErr.Valid() {
+		return modelValidationErr
 	}
 
 	return nil

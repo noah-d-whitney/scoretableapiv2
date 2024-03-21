@@ -56,6 +56,7 @@ func (app *application) routes() http.Handler {
 	router.With(app.requireActivatedUser).Patch("/v1/team/{id}", app.UpdateTeam)
 
 	router.With(app.requireActivatedUser).Post("/v1/game", app.InsertGame)
+	router.With(app.requireActivatedUser).Get("/v1/game/{id}", app.GetGame)
 
 	return router
 }

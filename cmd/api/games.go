@@ -5,7 +5,9 @@ import (
 	"ScoreTableApi/internal/validator"
 	"errors"
 	"fmt"
+	"github.com/go-chi/chi/v5"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -65,4 +67,26 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 	}
+}
+
+func (app *application) GetGame(w http.ResponseWriter, r *http.Request) {
+	userID := app.contextGetUser(r).ID
+	pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	game, err := app.models.Games.Get(userID, pin)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"game": game}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+	return
 }
