@@ -1,0 +1,5 @@
+ALTER TABLE IF EXISTS players
+DROP COLUMN is_active;
+
+ALTER TABLE IF EXISTS games
+ALTER COLUMN period_length TYPE bigint;

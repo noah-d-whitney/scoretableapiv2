@@ -1,0 +1,5 @@
+ALTER TABLE IF EXISTS players
+ADD COLUMN is_active bool NOT NULL DEFAULT FALSE;
+
+ALTER TABLE IF EXISTS games
+ALTER COLUMN period_length TYPE integer;

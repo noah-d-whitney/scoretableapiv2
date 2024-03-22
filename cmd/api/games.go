@@ -13,14 +13,14 @@ import (
 
 func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		DateTime     *time.Time `json:"date_time"`
-		TeamSize     *int64     `json:"team_size"`
-		Type         *string    `json:"type"`
-		PeriodLength *int64     `json:"period_length"`
-		PeriodCount  *int64     `json:"period_count"`
-		ScoreTarget  *int64     `json:"score_target"`
-		HomeTeamPin  string     `json:"home_team_pin"`
-		AwayTeamPin  string     `json:"away_team_pin"`
+		DateTime     *time.Time        `json:"date_time"`
+		TeamSize     *int64            `json:"team_size"`
+		Type         *string           `json:"type"`
+		PeriodLength data.PeriodLength `json:"period_length"`
+		PeriodCount  *int64            `json:"period_count"`
+		ScoreTarget  *int64            `json:"score_target"`
+		HomeTeamPin  string            `json:"home_team_pin"`
+		AwayTeamPin  string            `json:"away_team_pin"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -37,7 +37,7 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 		DateTime:     input.DateTime,
 		TeamSize:     input.TeamSize,
 		Type:         (*data.GameType)(input.Type),
-		PeriodLength: (*data.PeriodLength)(input.PeriodLength),
+		PeriodLength: input.PeriodLength,
 		PeriodCount:  input.PeriodCount,
 		ScoreTarget:  input.ScoreTarget,
 		HomeTeamPin:  input.HomeTeamPin,

@@ -5,30 +5,86 @@ import (
 	"ScoreTableApi/internal/validator"
 	"context"
 	"database/sql"
+	json2 "encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 )
 
 type Game struct {
-	ID           int64         `json:"-"`
-	UserID       int64         `json:"user_id"`
-	PinID        pins.Pin      `json:"pin_id"`
-	CreatedAt    time.Time     `json:"-"`
-	Version      int64         `json:"-"`
-	Status       GameStatus    `json:"status"`
-	DateTime     *time.Time    `json:"date_time"`
-	TeamSize     *int64        `json:"team_size"`
-	Type         *GameType     `json:"type"`
-	PeriodLength *PeriodLength `json:"period_length,omitempty"`
-	PeriodCount  *int64        `json:"period_count,omitempty"`
-	ScoreTarget  *int64        `json:"score_target,omitempty"`
-	HomeTeamPin  string        `json:"home_team_pin,omitempty"`
-	AwayTeamPin  string        `json:"away_team_pin,omitempty"`
+	ID           int64        `json:"-"`
+	UserID       int64        `json:"user_id"`
+	PinID        pins.Pin     `json:"pin_id"`
+	CreatedAt    time.Time    `json:"-"`
+	Version      int64        `json:"-"`
+	Status       GameStatus   `json:"status"`
+	DateTime     *time.Time   `json:"date_time"`
+	TeamSize     *int64       `json:"team_size"`
+	Type         *GameType    `json:"type"`
+	PeriodLength PeriodLength `json:"period_length,omitempty"`
+	PeriodCount  *int64       `json:"period_count,omitempty"`
+	ScoreTarget  *int64       `json:"score_target,omitempty"`
+	HomeTeamPin  string       `json:"home_team_pin,omitempty"`
+	AwayTeamPin  string       `json:"away_team_pin,omitempty"`
 	Teams        struct {
 		Home *Team `json:"home,omitempty"`
 		Away *Team `json:"away,omitempty"`
 	} `json:"teams,omitempty"`
+}
+
+type PeriodLength time.Duration
+
+func (pl *PeriodLength) UnmarshalJSON(b []byte) error {
+	unquoted, err := strconv.Unquote(string(b))
+	if err != nil {
+		return &json2.UnmarshalTypeError{Field: "period_length"}
+	}
+	parts := strings.Split(unquoted, ":")
+	if len(parts) != 2 {
+		return &json2.UnmarshalTypeError{Field: "period_length"}
+	}
+	minutes, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return &json2.UnmarshalTypeError{Field: "period_length"}
+	}
+	seconds, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return &json2.UnmarshalTypeError{Field: "period_length"}
+	}
+	totalTime := (time.Duration(minutes) * time.Minute) + (time.Duration(seconds) * time.Second)
+
+	*pl = PeriodLength(totalTime)
+	return nil
+}
+
+func (pl *PeriodLength) MarshalJSON() ([]byte, error) {
+	duration := time.Duration(*pl)
+	mins := int(math.Floor(duration.Minutes()))
+	minsDuration := time.Duration(mins) * time.Minute
+	secs := int(math.Round((duration - minsDuration).Seconds()))
+	var padMin string
+	var padSec string
+	switch {
+	case mins < 10:
+		padMin = "0"
+	default:
+		padMin = ""
+	}
+	switch {
+	case secs < 10:
+		padSec = "0"
+	default:
+		padSec = ""
+	}
+	json := fmt.Sprintf(`"%s%d:%s%d"`, padMin, mins, padSec, secs)
+	return []byte(json), nil
+}
+
+func (pl *PeriodLength) Duration() time.Duration {
+	return time.Duration(*pl)
 }
 
 type GameStatus int64
@@ -39,15 +95,6 @@ const (
 	FINISHED
 	CANCELED
 )
-
-type PeriodLength int64
-
-func (pl PeriodLength) MarshalJSON() ([]byte, error) {
-	m := pl / 60
-	s := pl % 60
-	json := fmt.Sprintf(`"%d:%d"`, m, s)
-	return []byte(json), nil
-}
 
 func (s GameStatus) MarshalJSON() ([]byte, error) {
 	switch s {
@@ -245,6 +292,7 @@ func (m *GameModel) Get(userID int64, pin string) (*Game, error) {
 			return nil, err
 		}
 	}
+	println(game.PeriodLength.Duration().Minutes())
 
 	err = getGameTeams(game, tx, ctx)
 	if err != nil {
@@ -476,14 +524,13 @@ func ValidateGame(v *validator.Validator, game *Game) {
 
 	if *game.Type == GameTypeTimed {
 		v.Check(game.PeriodCount != nil, "period_count", "must be provided for timed game")
-		v.Check(game.PeriodLength != nil, "period_length", "must be provided for timed game")
+		v.Check(game.PeriodLength != 0, "period_length", "must be provided for timed game")
 		v.Check(game.ScoreTarget == nil, "score_target", "cannot be provided for a timed game")
 		if !v.Valid() {
 			return
 		}
 
-		v.Check(*game.PeriodLength > 0, "period_length", "must be greater than 0 seconds")
-		v.Check(*game.PeriodLength <= 60*30, "period_count", "must be 20 minutes or less")
+		v.Check(game.PeriodLength.Duration() <= 30*time.Minute, "period_count", "must be 30 minutes or less")
 
 		v.Check(*game.PeriodCount > 0, "period_count", "must be greater than 0")
 		v.Check(*game.PeriodCount <= 4, "period_count", "must be 4 or less")
@@ -492,7 +539,7 @@ func ValidateGame(v *validator.Validator, game *Game) {
 	if *game.Type == GameTypeTarget {
 		v.Check(game.ScoreTarget != nil, "score_target", "must be provided for target game")
 		v.Check(game.PeriodCount == nil, "period_count", "cannot be provided for a target game")
-		v.Check(game.PeriodLength == nil, "period_length", "cannot be provided for a target game")
+		v.Check(game.PeriodLength == 0, "period_length", "cannot be provided for a target game")
 		if !v.Valid() {
 			return
 		}
