@@ -14,7 +14,7 @@ import (
 
 type Game struct {
 	ID           int64        `json:"-"`
-	UserID       int64        `json:"user_id"`
+	UserID       int64        `json:"-"`
 	PinID        pins.Pin     `json:"pin_id"`
 	CreatedAt    time.Time    `json:"-"`
 	Version      int64        `json:"-"`
@@ -37,7 +37,7 @@ type GameModel struct {
 	db *sql.DB
 }
 
-// TODO refactor PeriodLength JSON mar/unm
+// TODO refactor PeriodLength JSON mar/um
 
 type PeriodLength time.Duration
 

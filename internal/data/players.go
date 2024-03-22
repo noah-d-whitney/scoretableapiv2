@@ -26,6 +26,8 @@ type Player struct {
 
 // TODO add player status (injured, unavailable, etc)
 // and make game unavailable to start until lineup is changed
+// TODO make views in psql table for common queries (teamsize, is_active, team player number,
+// game type,  etc)
 
 type PlayerModel struct {
 	db *sql.DB
@@ -88,7 +90,10 @@ func (m *PlayerModel) Get(userId int64, pin string) (*Player, error) {
 			players.pref_number, players.created_at, players.version, (
 				SELECT count(*)::int::bool
 					FROM teams_players
-					WHERE player_id = players.id AND lineup_number IS NOT NULL)
+					JOIN teams ON teams_players.team_id = teams.id
+					WHERE player_id = players.id 
+						AND lineup_number IS NOT NULL 
+						AND teams.is_active IS NOT FALSE)
 		FROM pins
 		JOIN players ON pins.id = players.pin_id
 		WHERE pins.pin = $1 AND players.user_id = $2 AND pins.scope = $3`

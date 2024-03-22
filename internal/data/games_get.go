@@ -58,9 +58,16 @@ func (m *GameModel) Get(userID int64, pin string) (*Game, error) {
 			return nil, err
 		}
 	}
-	println(game.PeriodLength.Duration().Minutes())
 
 	err = getGameTeams(game, tx, ctx)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, rollbackErr
+		}
+		return nil, err
+	}
+
+	err = getGameTeamsPlayers(game, tx, ctx)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return nil, rollbackErr

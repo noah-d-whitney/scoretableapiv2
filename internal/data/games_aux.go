@@ -67,6 +67,77 @@ func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
 	return nil
 }
 
+func getGameTeamsPlayers(game *Game, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		SELECT pins.pin, players.id, players.first_name, players.last_name, teams_players.player_number,
+			teams_players.lineup_number, (
+				SELECT count(*)::int::bool
+					FROM teams_players
+					JOIN teams ON teams_players.team_id = teams.id
+					WHERE player_id = players.id 
+						AND lineup_number IS NOT NULL 
+						AND teams.is_active IS NOT FALSE)	
+			FROM players
+				JOIN teams_players ON players.id = teams_players.player_id
+				JOIN pins ON players.pin_id = pins.id
+			WHERE teams_players.user_id = $1 AND teams_players.team_id = $2
+			ORDER BY lineup_number, last_name`
+
+	if game.Teams.Home != nil {
+		rows, err := tx.QueryContext(ctx, stmt, game.Teams.Home.UserID, game.Teams.Home.ID)
+		if err != nil {
+			return err
+		}
+
+		players := make([]*Player, 0)
+		for rows.Next() {
+			var player Player
+			err := rows.Scan(
+				&player.PinId.Pin,
+				&player.ID,
+				&player.FirstName,
+				&player.LastName,
+				&player.Number,
+				&player.LineupPos,
+				&player.IsActive,
+			)
+			if err != nil {
+				return err
+			}
+			players = append(players, &player)
+		}
+		game.Teams.Home.Players = players
+	}
+
+	if game.Teams.Away != nil {
+		rows, err := tx.QueryContext(ctx, stmt, game.Teams.Away.UserID, game.Teams.Away.ID)
+		if err != nil {
+			return err
+		}
+
+		players := make([]*Player, 0)
+		for rows.Next() {
+			var player Player
+			err := rows.Scan(
+				&player.PinId.Pin,
+				&player.ID,
+				&player.FirstName,
+				&player.LastName,
+				&player.Number,
+				&player.LineupPos,
+				&player.IsActive,
+			)
+			if err != nil {
+				return err
+			}
+			players = append(players, &player)
+		}
+		game.Teams.Away.Players = players
+	}
+
+	return nil
+}
+
 func assignGameTeam(gameID, userID int64, teamPin string, teamSide GameTeamSide,
 	tx *sql.Tx, ctx context.Context) error {
 	getStmt := `
@@ -173,6 +244,10 @@ func checkTeamConflict(game *Game, tx *sql.Tx, ctx context.Context) error {
 		JOIN pins ON players.pin_id = pins.id
 		WHERE teams_players.team_id = $2
 		`
+
+	if game.Teams.Home == nil || game.Teams.Away == nil {
+		return nil
+	}
 
 	rows, err := tx.QueryContext(ctx, stmt, game.Teams.Home.ID, game.Teams.Away.ID)
 	if err != nil {

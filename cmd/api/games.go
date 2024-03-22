@@ -90,3 +90,26 @@ func (app *application) GetGame(w http.ResponseWriter, r *http.Request) {
 	}
 	return
 }
+
+func (app *application) DeleteGame(w http.ResponseWriter, r *http.Request) {
+	userID := app.contextGetUser(r).ID
+	pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	err := app.models.Games.Delete(userID, pin)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{
+		"message": fmt.Sprintf("game (%s) successfully deleted", pin)}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+	return
+}
