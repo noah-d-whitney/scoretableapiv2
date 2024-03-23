@@ -106,6 +106,7 @@ func (app *application) GetAllGames(w http.ResponseWriter, r *http.Request) {
 	filters.PlayerPins = app.readCSV(qs, "player_pins", nil)
 	filters.Type = data.GameType(app.readString(qs, "type", ""))
 	filters.TeamSize = app.readCSInt(qs, "team_size", nil, v)
+	filters.Status = app.readCSGameStatus(qs, nil, v)
 
 	filters.Filters.Page = app.readInt(qs, "page", 1, v)
 	filters.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
@@ -117,13 +118,13 @@ func (app *application) GetAllGames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	games, _, err := app.models.Games.GetAll(userID, filters)
+	games, metadata, err := app.models.Games.GetAll(userID, filters)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
 	}
 
-	err = app.writeJSON(w, http.StatusOK, envelope{"games": games}, nil)
+	err = app.writeJSON(w, http.StatusOK, envelope{"metadata": metadata, "games": games}, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 	}

@@ -25,9 +25,20 @@ type GamesFilter struct {
 	Status     []GameStatus
 }
 
+type GamesMetadata struct {
+	Metadata
+	StartDate  *time.Time   `json:"start_date,omitempty"`
+	EndDate    *time.Time   `json:"end_date,omitempty"`
+	TeamPins   []string     `json:"team_pins,omitempty"`
+	PlayerPins []string     `json:"player_pins,omitempty"`
+	Type       GameType     `json:"type,omitempty"`
+	TeamSize   []int64      `json:"team_size,omitempty"`
+	Status     []GameStatus `json:"status,omitempty"`
+}
+
 // todo get sorted games for status
 
-func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, Metadata,
+func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, GamesMetadata,
 	error) {
 	stmt := `
 		SELECT pin 
@@ -54,7 +65,7 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, Metadata
 
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, Metadata{}, err
+		return nil, GamesMetadata{}, err
 	}
 
 	args := []any{
@@ -78,9 +89,9 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, Metadata
 	rows, err := tx.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return nil, Metadata{}, rollbackErr
+			return nil, GamesMetadata{}, rollbackErr
 		}
-		return nil, Metadata{}, err
+		return nil, GamesMetadata{}, err
 	}
 
 	games := make([]*Game, 0)
@@ -89,14 +100,46 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, Metadata
 		err := rows.Scan(&game.PinID.Pin)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				return nil, Metadata{}, rollbackErr
+				return nil, GamesMetadata{}, rollbackErr
 			}
-			return nil, Metadata{}, err
+			return nil, GamesMetadata{}, err
 		}
 		games = append(games, &game)
 	}
 
-	return games, Metadata{}, nil
+	metadata := calculateGamesMetadata(5, filters)
+
+	return games, metadata, nil
+}
+
+func calculateGamesMetadata(totalRecords int, f GamesFilter) GamesMetadata {
+	if totalRecords == 0 {
+		return GamesMetadata{}
+	}
+
+	var startDate *time.Time
+	var endDate *time.Time
+	if f.DateRange.Start.IsZero() {
+		startDate = nil
+	} else {
+		startDate = &f.DateRange.Start
+	}
+	if f.DateRange.End.IsZero() {
+		startDate = nil
+	} else {
+		startDate = &f.DateRange.End
+	}
+
+	return GamesMetadata{
+		Metadata:   calculateMetadata(totalRecords, f.Filters.Page, f.Filters.PageSize),
+		StartDate:  startDate,
+		EndDate:    endDate,
+		TeamPins:   f.TeamPins,
+		PlayerPins: f.PlayerPins,
+		Type:       f.Type,
+		TeamSize:   f.TeamSize,
+		Status:     f.Status,
+	}
 }
 
 func ValidateGamesFilter(v *validator.Validator, f GamesFilter) {

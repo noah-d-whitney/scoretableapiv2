@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ScoreTableApi/internal/data"
 	"ScoreTableApi/internal/validator"
 	json2 "encoding/json"
 	"errors"
@@ -101,6 +102,38 @@ func (app *application) readCSV(qs url.Values, key string, defaultValue []string
 	}
 
 	return strings.Split(csv, ",")
+}
+
+func (app *application) readCSGameStatus(qs url.Values, defaultValue []data.GameStatus,
+	v *validator.Validator) []data.GameStatus {
+	key := "status"
+	csv := qs.Get(key)
+	if csv == "" {
+		return defaultValue
+	}
+
+	statuses := make([]data.GameStatus, 0)
+	split := strings.Split(csv, ",")
+	for _, s := range split {
+		var status data.GameStatus
+		switch s {
+		case "not-started":
+			status = data.NOTSTARTED
+		case "in-progress":
+			status = data.INPROGRESS
+		case "finished":
+			status = data.FINISHED
+		case "canceled":
+			status = data.CANCELED
+		default:
+			v.AddError(key,
+				`must be selected from the following: "not-started","in-progress","finished","canceled"`)
+			return defaultValue
+		}
+		statuses = append(statuses, status)
+	}
+
+	return statuses
 }
 
 func (app *application) readInt(qs url.Values, key string, defaultValue int, v *validator.Validator) int {
