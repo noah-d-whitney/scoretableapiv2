@@ -91,6 +91,45 @@ func (app *application) GetGame(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (app *application) GetAllGames(w http.ResponseWriter, r *http.Request) {
+	qs := r.URL.Query()
+	v := validator.New()
+	userID := app.contextGetUser(r).ID
+	filters := data.GamesFilter{}
+
+	filters.DateRange.Start = app.readDate(qs, "start_date", time.Time{}, v)
+	filters.DateRange.End = app.readDate(qs, "end_date", time.Time{}, v)
+	if !filters.DateRange.End.IsZero() {
+		filters.DateRange.End = filters.DateRange.End.Add(24 * time.Hour)
+	}
+	filters.TeamPins = app.readCSV(qs, "team_pins", nil)
+	filters.PlayerPins = app.readCSV(qs, "player_pins", nil)
+	filters.Type = data.GameType(app.readString(qs, "type", ""))
+	filters.TeamSize = app.readCSInt(qs, "team_size", nil, v)
+
+	filters.Filters.Page = app.readInt(qs, "page", 1, v)
+	filters.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
+	filters.Filters.Sort = app.readString(qs, "sort", "name")
+	filters.Filters.SortSafeList = []string{"pin", "name", "-pin", "-name"}
+
+	if data.ValidateGamesFilter(v, filters); !v.Valid() {
+		app.failedValidationResponse(w, r, v.Errors)
+		return
+	}
+
+	games, _, err := app.models.Games.GetAll(userID, filters)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"games": games}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+	return
+}
+
 func (app *application) DeleteGame(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))

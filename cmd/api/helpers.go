@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type envelope map[string]any
@@ -115,6 +116,43 @@ func (app *application) readInt(qs url.Values, key string, defaultValue int, v *
 	}
 
 	return i
+}
+
+func (app *application) readDate(qs url.Values, key string, defaultValue time.Time,
+	v *validator.Validator) time.Time {
+	s := qs.Get(key)
+	if s == "" {
+		return defaultValue
+	}
+
+	t, err := time.Parse(time.DateOnly, s)
+	if err != nil {
+		v.AddError(key, "must be a valid date (YYYY-MM-DD)")
+		return defaultValue
+	}
+
+	return t
+}
+
+func (app *application) readCSInt(qs url.Values, key string, defaultValue []int64,
+	v *validator.Validator) []int64 {
+	csv := qs.Get(key)
+	if csv == "" {
+		return defaultValue
+	}
+
+	ints := make([]int64, 0)
+	split := strings.Split(csv, ",")
+	for _, s := range split {
+		i, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			v.AddError(key, fmt.Sprintf(`"%s" is not a valid integer`, s))
+			return defaultValue
+		}
+		ints = append(ints, i)
+	}
+
+	return ints
 }
 
 func (app *application) backgroundTask(task func()) {

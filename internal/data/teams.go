@@ -188,8 +188,7 @@ func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 }
 
 func (m *TeamModel) GetAll(userID int64, name string, includes []string, filters Filters) ([]*Team,
-	Metadata,
-	error) {
+	Metadata, error) {
 	stmt := fmt.Sprintf(`
 		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name,  
 			teams.created_at, teams.version, teams.is_active, (
