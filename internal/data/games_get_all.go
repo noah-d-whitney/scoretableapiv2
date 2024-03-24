@@ -16,19 +16,8 @@ var (
 )
 
 type GamesFilter struct {
-	Filters
-	DateRange
-	TeamPins   []string
-	PlayerPins []string
-	Type       GameType
-	TeamSize   []int64
-	Status     []GameStatus
-}
-
-type GamesMetadata struct {
-	Metadata
-	StartDate  *time.Time   `json:"start_date,omitempty"`
-	EndDate    *time.Time   `json:"end_date,omitempty"`
+	Filters    `json:"filters"`
+	DateRange  `json:"date_range"`
 	TeamPins   []string     `json:"team_pins,omitempty"`
 	PlayerPins []string     `json:"player_pins,omitempty"`
 	Type       GameType     `json:"type,omitempty"`
@@ -36,10 +25,21 @@ type GamesMetadata struct {
 	Status     []GameStatus `json:"status,omitempty"`
 }
 
+type GamesMetadata struct {
+	Pag     Metadata    `json:"pag"`
+	Filters GamesFilter `json:"filters"`
+	//*DateRange `json:"date_range"`
+	//TeamPins   []string     `json:"team_pins,omitempty"`
+	//PlayerPins []string     `json:"player_pins,omitempty"`
+	//Type       GameType     `json:"type,omitempty"`
+	//TeamSize   []int64      `json:"team_size,omitempty"`
+	//Status     []GameStatus `json:"status,omitempty"`
+}
+
 // todo get sorted games for status
 
-func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, GamesMetadata,
-	error) {
+func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string) ([]*Game,
+	GamesMetadata, error) {
 	stmt := `
 		SELECT pin 
 			FROM games_view
@@ -72,10 +72,10 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, GamesMet
 		userID,
 		filters.TeamPins != nil,
 		pq.Array(filters.TeamPins),
-		!filters.DateRange.Start.IsZero(),
-		filters.DateRange.Start,
-		!filters.DateRange.End.IsZero(),
-		filters.DateRange.End,
+		!filters.DateRange.AfterDate.IsZero(),
+		filters.DateRange.AfterDate,
+		!filters.DateRange.BeforeDate.IsZero(),
+		filters.DateRange.BeforeDate,
 		filters.PlayerPins != nil,
 		pq.Array(filters.PlayerPins),
 		filters.Type != "",
@@ -107,51 +107,47 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter) ([]*Game, GamesMet
 		games = append(games, &game)
 	}
 
-	metadata := calculateGamesMetadata(5, filters)
+	metadata := calculateGamesMetadata(5, filters, includes)
 
 	return games, metadata, nil
 }
 
-func calculateGamesMetadata(totalRecords int, f GamesFilter) GamesMetadata {
+//TODO move games metadata to game_types
+//TODO scan all fields from game, implement includes feature
+
+func calculateGamesMetadata(totalRecords int, f GamesFilter, includes []string) GamesMetadata {
 	if totalRecords == 0 {
 		return GamesMetadata{}
 	}
 
-	var startDate *time.Time
-	var endDate *time.Time
-	if f.DateRange.Start.IsZero() {
-		startDate = nil
-	} else {
-		startDate = &f.DateRange.Start
-	}
-	if f.DateRange.End.IsZero() {
-		startDate = nil
-	} else {
-		startDate = &f.DateRange.End
-	}
-
-	return GamesMetadata{
-		Metadata:   calculateMetadata(totalRecords, f.Filters.Page, f.Filters.PageSize),
-		StartDate:  startDate,
-		EndDate:    endDate,
-		TeamPins:   f.TeamPins,
+	metadata := GamesMetadata{
+		Pag:        calculateMetadata(totalRecords, f.Filters.Page, f.Filters.PageSize),
 		PlayerPins: f.PlayerPins,
 		Type:       f.Type,
 		TeamSize:   f.TeamSize,
 		Status:     f.Status,
 	}
+
+	if !f.DateRange.IsZero() {
+		metadata.DateRange = &f.DateRange
+	}
+
+	return metadata
 }
+
+// TODO add validation for all fields
 
 func ValidateGamesFilter(v *validator.Validator, f GamesFilter) {
 	ValidateFilters(v, f.Filters)
-	if !f.DateRange.Start.IsZero() {
-		v.Check(f.DateRange.Start.After(GAME_MIN_DATE), "start_date", "must be in 2024 or after")
+	if !f.DateRange.AfterDate.IsZero() {
+		v.Check(f.DateRange.AfterDate.After(GAME_MIN_DATE), "after_date", "must be in 2024 or after")
 	}
-	if !f.DateRange.End.IsZero() {
-		v.Check(f.DateRange.End.After(GAME_MIN_DATE), "end_date", "must be in 2024 or after")
+	if !f.DateRange.BeforeDate.IsZero() {
+		v.Check(f.DateRange.BeforeDate.After(GAME_MIN_DATE), "before_date", "must be in 2024 or after")
 	}
-	if !f.DateRange.Start.IsZero() && !f.DateRange.End.IsZero() {
-		v.Check(f.DateRange.Start.After(f.DateRange.End), "start_date", "cannot be after end date")
+	if !f.DateRange.AfterDate.IsZero() && !f.DateRange.BeforeDate.IsZero() {
+		v.Check(f.DateRange.AfterDate.After(f.DateRange.BeforeDate), "start_date",
+			"cannot be after end date")
 	}
 	if f.Type != "" {
 		v.Check(f.Type == GameTypeTimed || f.Type == GameTypeTarget, "type",

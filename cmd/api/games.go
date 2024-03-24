@@ -7,20 +7,21 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
 
 func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		DateTime     *time.Time        `json:"date_time"`
-		TeamSize     *int64            `json:"team_size"`
-		Type         *string           `json:"type"`
-		PeriodLength data.PeriodLength `json:"period_length"`
-		PeriodCount  *int64            `json:"period_count"`
-		ScoreTarget  *int64            `json:"score_target"`
-		HomeTeamPin  string            `json:"home_team_pin"`
-		AwayTeamPin  string            `json:"away_team_pin"`
+		DateTime     *time.Time         `json:"date_time"`
+		TeamSize     *int64             `json:"team_size"`
+		Type         *string            `json:"type"`
+		PeriodLength *data.PeriodLength `json:"period_length"`
+		PeriodCount  *int64             `json:"period_count"`
+		ScoreTarget  *int64             `json:"score_target"`
+		HomeTeamPin  string             `json:"home_team_pin"`
+		AwayTeamPin  string             `json:"away_team_pin"`
 	}
 
 	err := app.readJSON(w, r, &input)
@@ -37,7 +38,7 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 		DateTime:     input.DateTime,
 		TeamSize:     input.TeamSize,
 		Type:         (*data.GameType)(input.Type),
-		PeriodLength: input.PeriodLength,
+		PeriodLength: *input.PeriodLength,
 		PeriodCount:  input.PeriodCount,
 		ScoreTarget:  input.ScoreTarget,
 		HomeTeamPin:  input.HomeTeamPin,
@@ -92,33 +93,51 @@ func (app *application) GetGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) GetAllGames(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Filters  data.GamesFilter
+		Includes struct {
+			Values   []string
+			SafeList []string
+		}
+	}
+
 	qs := r.URL.Query()
 	v := validator.New()
 	userID := app.contextGetUser(r).ID
-	filters := data.GamesFilter{}
 
-	filters.DateRange.Start = app.readDate(qs, "start_date", time.Time{}, v)
-	filters.DateRange.End = app.readDate(qs, "end_date", time.Time{}, v)
-	if !filters.DateRange.End.IsZero() {
-		filters.DateRange.End = filters.DateRange.End.Add(24 * time.Hour)
+	input.Includes.Values = app.readCSV(qs, "includes", make([]string, 0))
+	input.Includes.SafeList = []string{"teams"}
+	for _, str := range input.Includes.Values {
+		if !slices.Contains(input.Includes.SafeList, str) {
+			v.AddError("includes", fmt.Sprintf(`Invalid includes value.
+Possible include values for teams are: "%s"`, strings.Join(input.Includes.SafeList, `", "`)))
+			app.failedValidationResponse(w, r, v.Errors)
+			return
+		}
 	}
-	filters.TeamPins = app.readCSV(qs, "team_pins", nil)
-	filters.PlayerPins = app.readCSV(qs, "player_pins", nil)
-	filters.Type = data.GameType(app.readString(qs, "type", ""))
-	filters.TeamSize = app.readCSInt(qs, "team_size", nil, v)
-	filters.Status = app.readCSGameStatus(qs, nil, v)
 
-	filters.Filters.Page = app.readInt(qs, "page", 1, v)
-	filters.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
-	filters.Filters.Sort = app.readString(qs, "sort", "name")
-	filters.Filters.SortSafeList = []string{"pin", "name", "-pin", "-name"}
+	input.Filters.DateRange.AfterDate = app.readDate(qs, "after_date", time.Time{}, v)
+	input.Filters.DateRange.BeforeDate = app.readDate(qs, "before_date", time.Time{}, v)
+	if !input.Filters.DateRange.BeforeDate.IsZero() {
+		input.Filters.DateRange.BeforeDate = input.Filters.DateRange.BeforeDate.Add(24 * time.Hour)
+	}
+	input.Filters.TeamPins = app.readCSV(qs, "team_pins", nil)
+	input.Filters.PlayerPins = app.readCSV(qs, "player_pins", nil)
+	input.Filters.Type = data.GameType(app.readString(qs, "type", ""))
+	input.Filters.TeamSize = app.readCSInt(qs, "team_size", nil, v)
+	input.Filters.Status = app.readCSGameStatus(qs, nil, v)
 
-	if data.ValidateGamesFilter(v, filters); !v.Valid() {
+	input.Filters.Page = app.readInt(qs, "page", 1, v)
+	input.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
+	input.Filters.Sort = app.readString(qs, "sort", "name")
+	input.Filters.SortSafeList = []string{"pin", "name", "-pin", "-name"}
+
+	if data.ValidateGamesFilter(v, input.Filters); !v.Valid() {
 		app.failedValidationResponse(w, r, v.Errors)
 		return
 	}
 
-	games, metadata, err := app.models.Games.GetAll(userID, filters)
+	games, metadata, err := app.models.Games.GetAll(userID, input.Filters, input.Includes.Values)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
