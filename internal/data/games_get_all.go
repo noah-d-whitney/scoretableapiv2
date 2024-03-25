@@ -3,7 +3,9 @@ package data
 import (
 	"ScoreTableApi/internal/validator"
 	"context"
+	"fmt"
 	"github.com/lib/pq"
+	"slices"
 	"time"
 )
 
@@ -26,22 +28,23 @@ type GamesFilter struct {
 }
 
 type GamesMetadata struct {
-	Pag     Metadata    `json:"pag"`
-	Filters GamesFilter `json:"filters"`
-	//*DateRange `json:"date_range"`
-	//TeamPins   []string     `json:"team_pins,omitempty"`
-	//PlayerPins []string     `json:"player_pins,omitempty"`
-	//Type       GameType     `json:"type,omitempty"`
-	//TeamSize   []int64      `json:"team_size,omitempty"`
-	//Status     []GameStatus `json:"status,omitempty"`
+	Pag        Metadata `json:"pag"`
+	*DateRange `json:"date_range,omitempty"`
+	TeamPins   []string     `json:"team_pins,omitempty"`
+	PlayerPins []string     `json:"player_pins,omitempty"`
+	Type       GameType     `json:"type,omitempty"`
+	TeamSize   []int64      `json:"team_size,omitempty"`
+	Status     []GameStatus `json:"status,omitempty"`
+	Includes   []string     `json:"includes,omitempty"`
 }
 
 // todo get sorted games for status
 
 func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string) ([]*Game,
 	GamesMetadata, error) {
-	stmt := `
-		SELECT pin 
+	stmt := fmt.Sprintf(`
+		SELECT count(*) OVER(), pin_id, pin, scope, id, user_id, created_at, version, status, date_time, 
+			team_size, period_length, period_count, score_target, type
 			FROM games_view
 			WHERE games_view.user_id = $1
 			AND (($2 IS FALSE)
@@ -59,7 +62,8 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string)
 				OR games_view.team_size = ANY($13::integer[]))
 			AND (($14 IS FALSE)
 				OR games_view.status = ANY($15::integer[]))
-			`
+			ORDER BY %s %s, id ASC
+			LIMIT $16 OFFSET $17`, filters.Filters.sortColumn(), filters.Filters.sortDirection())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -72,9 +76,9 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string)
 		userID,
 		filters.TeamPins != nil,
 		pq.Array(filters.TeamPins),
-		!filters.DateRange.AfterDate.IsZero(),
+		filters.DateRange.AfterDate != nil,
 		filters.DateRange.AfterDate,
-		!filters.DateRange.BeforeDate.IsZero(),
+		filters.DateRange.BeforeDate != nil,
 		filters.DateRange.BeforeDate,
 		filters.PlayerPins != nil,
 		pq.Array(filters.PlayerPins),
@@ -84,6 +88,8 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string)
 		pq.Array(filters.TeamSize),
 		filters.Status != nil,
 		pq.Array(filters.Status),
+		filters.Filters.limit(),
+		filters.Filters.offset(),
 	}
 
 	rows, err := tx.QueryContext(ctx, stmt, args...)
@@ -94,10 +100,27 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string)
 		return nil, GamesMetadata{}, err
 	}
 
+	totalRecords := 0
 	games := make([]*Game, 0)
 	for rows.Next() {
 		var game Game
-		err := rows.Scan(&game.PinID.Pin)
+		err := rows.Scan(
+			&totalRecords,
+			&game.PinID.ID,
+			&game.PinID.Pin,
+			&game.PinID.Scope,
+			&game.ID,
+			&game.UserID,
+			&game.CreatedAt,
+			&game.Version,
+			&game.Status,
+			&game.DateTime,
+			&game.TeamSize,
+			&game.PeriodLength,
+			&game.PeriodCount,
+			&game.ScoreTarget,
+			&game.Type,
+		)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return nil, GamesMetadata{}, rollbackErr
@@ -107,7 +130,31 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string)
 		games = append(games, &game)
 	}
 
-	metadata := calculateGamesMetadata(5, filters, includes)
+	for _, g := range games {
+		err := getGameTeams(g, tx, ctx)
+		if err != nil {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				return nil, GamesMetadata{}, rollbackErr
+			}
+			return nil, GamesMetadata{}, err
+		}
+		g.HomeTeamPin = ""
+		g.AwayTeamPin = ""
+	}
+
+	if slices.Contains(includes, "players") {
+		for _, g := range games {
+			err := getGameTeamsPlayers(g, tx, ctx)
+			if err != nil {
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					return nil, GamesMetadata{}, rollbackErr
+				}
+				return nil, GamesMetadata{}, err
+			}
+		}
+	}
+
+	metadata := calculateGamesMetadata(totalRecords, filters, includes)
 
 	return games, metadata, nil
 }
@@ -126,9 +173,10 @@ func calculateGamesMetadata(totalRecords int, f GamesFilter, includes []string) 
 		Type:       f.Type,
 		TeamSize:   f.TeamSize,
 		Status:     f.Status,
+		Includes:   includes,
 	}
 
-	if !f.DateRange.IsZero() {
+	if !f.DateRange.IsEmpty() {
 		metadata.DateRange = &f.DateRange
 	}
 
@@ -136,17 +184,18 @@ func calculateGamesMetadata(totalRecords int, f GamesFilter, includes []string) 
 }
 
 // TODO add validation for all fields
+// TODO Refactor get all games metadata and validation
 
 func ValidateGamesFilter(v *validator.Validator, f GamesFilter) {
 	ValidateFilters(v, f.Filters)
-	if !f.DateRange.AfterDate.IsZero() {
+	if f.DateRange.AfterDate != nil {
 		v.Check(f.DateRange.AfterDate.After(GAME_MIN_DATE), "after_date", "must be in 2024 or after")
 	}
-	if !f.DateRange.BeforeDate.IsZero() {
+	if f.DateRange.BeforeDate != nil {
 		v.Check(f.DateRange.BeforeDate.After(GAME_MIN_DATE), "before_date", "must be in 2024 or after")
 	}
-	if !f.DateRange.AfterDate.IsZero() && !f.DateRange.BeforeDate.IsZero() {
-		v.Check(f.DateRange.AfterDate.After(f.DateRange.BeforeDate), "start_date",
+	if f.DateRange.IsFull() {
+		v.Check(f.DateRange.BeforeDate.After(*f.DateRange.AfterDate), "start_date",
 			"cannot be after end date")
 	}
 	if f.Type != "" {

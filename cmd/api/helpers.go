@@ -151,8 +151,8 @@ func (app *application) readInt(qs url.Values, key string, defaultValue int, v *
 	return i
 }
 
-func (app *application) readDate(qs url.Values, key string, defaultValue time.Time,
-	v *validator.Validator) time.Time {
+func (app *application) readDate(qs url.Values, key string, defaultValue *time.Time,
+	v *validator.Validator) *time.Time {
 	s := qs.Get(key)
 	if s == "" {
 		return defaultValue
@@ -164,7 +164,7 @@ func (app *application) readDate(qs url.Values, key string, defaultValue time.Ti
 		return defaultValue
 	}
 
-	return t
+	return &t
 }
 
 func (app *application) readCSInt(qs url.Values, key string, defaultValue []int64,

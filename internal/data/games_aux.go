@@ -68,6 +68,13 @@ func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
 }
 
 func getGameTeamsPlayers(game *Game, tx *sql.Tx, ctx context.Context) error {
+	if game.Teams.Home == nil && game.Teams.Away == nil {
+		err := getGameTeams(game, tx, ctx)
+		if err != nil {
+			return err
+		}
+	}
+
 	stmt := `
 		SELECT pins.pin, players.id, players.first_name, players.last_name, teams_players.player_number,
 			teams_players.lineup_number, (

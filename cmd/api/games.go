@@ -106,7 +106,7 @@ func (app *application) GetAllGames(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
 
 	input.Includes.Values = app.readCSV(qs, "includes", make([]string, 0))
-	input.Includes.SafeList = []string{"teams"}
+	input.Includes.SafeList = []string{"players"}
 	for _, str := range input.Includes.Values {
 		if !slices.Contains(input.Includes.SafeList, str) {
 			v.AddError("includes", fmt.Sprintf(`Invalid includes value.
@@ -116,10 +116,12 @@ Possible include values for teams are: "%s"`, strings.Join(input.Includes.SafeLi
 		}
 	}
 
-	input.Filters.DateRange.AfterDate = app.readDate(qs, "after_date", time.Time{}, v)
-	input.Filters.DateRange.BeforeDate = app.readDate(qs, "before_date", time.Time{}, v)
-	if !input.Filters.DateRange.BeforeDate.IsZero() {
-		input.Filters.DateRange.BeforeDate = input.Filters.DateRange.BeforeDate.Add(24 * time.Hour)
+	input.Filters.DateRange.AfterDate = app.readDate(qs, "after_date", nil, v)
+	input.Filters.DateRange.BeforeDate = app.readDate(qs, "before_date", nil, v)
+	if input.Filters.DateRange.BeforeDate != nil {
+		timePlusDay := *input.Filters.DateRange.BeforeDate
+		timePlusDay = timePlusDay.Add(3 * time.Hour)
+		input.Filters.DateRange.BeforeDate = &timePlusDay
 	}
 	input.Filters.TeamPins = app.readCSV(qs, "team_pins", nil)
 	input.Filters.PlayerPins = app.readCSV(qs, "player_pins", nil)
@@ -129,8 +131,8 @@ Possible include values for teams are: "%s"`, strings.Join(input.Includes.SafeLi
 
 	input.Filters.Page = app.readInt(qs, "page", 1, v)
 	input.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
-	input.Filters.Sort = app.readString(qs, "sort", "name")
-	input.Filters.SortSafeList = []string{"pin", "name", "-pin", "-name"}
+	input.Filters.Sort = app.readString(qs, "sort", "date_time")
+	input.Filters.SortSafeList = []string{"date_time", "-date_time"}
 
 	if data.ValidateGamesFilter(v, input.Filters); !v.Valid() {
 		app.failedValidationResponse(w, r, v.Errors)

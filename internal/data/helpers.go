@@ -6,12 +6,16 @@ import (
 )
 
 type DateRange struct {
-	AfterDate  time.Time `json:"after_date,omitempty"`
-	BeforeDate time.Time `json:"before_date,omitempty"`
+	AfterDate  *time.Time `json:"after_date,omitempty"`
+	BeforeDate *time.Time `json:"before_date,omitempty"`
 }
 
-func (r DateRange) IsZero() bool {
-	return r.AfterDate.IsZero() && r.BeforeDate.IsZero()
+func (r DateRange) IsEmpty() bool {
+	return r.AfterDate == nil && r.BeforeDate == nil
+}
+
+func (r DateRange) IsFull() bool {
+	return r.AfterDate != nil && r.BeforeDate != nil
 }
 
 func parsePinList(pins []string) (assignList []string, unassignList []string) {
