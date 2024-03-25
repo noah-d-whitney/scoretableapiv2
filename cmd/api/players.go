@@ -145,7 +145,6 @@ func (app *application) UpdatePlayer(w http.ResponseWriter, r *http.Request) {
 		FirstName  *string `json:"first_name"`
 		LastName   *string `json:"last_name"`
 		PrefNumber *int    `json:"pref_number"`
-		IsActive   *bool   `json:"is_active"`
 	}
 
 	err = app.readJSON(w, r, &input)

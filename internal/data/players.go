@@ -191,7 +191,7 @@ func (m *PlayerModel) GetAll(userID int64, name string, filters Filters) ([]*Pla
 func (m *PlayerModel) Update(player *Player) error {
 	stmt := `
 		UPDATE players
-		SET first_name = $1, last_name = $2, pref_number = $3, is_active = $4, version = version + 1
+		SET first_name = $1, last_name = $2, pref_number = $3, version = version + 1
 		WHERE user_id = $5 AND id = $6 AND version = $7
 		RETURNING version`
 
@@ -199,7 +199,6 @@ func (m *PlayerModel) Update(player *Player) error {
 		player.FirstName,
 		player.LastName,
 		player.PrefNumber,
-		player.IsActive,
 		player.UserId,
 		player.ID,
 		player.Version,

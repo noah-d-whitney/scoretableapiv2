@@ -236,6 +236,7 @@ func unassignGameTeam(gameID, userID int64, teamSide GameTeamSide, tx *sql.Tx,
 	return nil
 }
 
+// TODO refactor or make rules in DB
 func checkTeamConflict(game *Game, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
 		SELECT pins.pin

@@ -152,6 +152,32 @@ Possible include values for teams are: "%s"`, strings.Join(input.Includes.SafeLi
 	return
 }
 
+func (app *application) UpdateGame(w http.ResponseWriter, r *http.Request) {
+	userID := app.contextGetUser(r).ID
+	pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	game, err := app.models.Games.Get(userID, pin)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	var input struct {
+		DateTime     *time.Time
+		TeamSize     *int64
+		PeriodLength *data.PeriodLength
+		PeriodCount  *int64
+		ScoreTarget  *int64
+		HomeTeamPin  *string
+		AwayTeamPin  *string
+	}
+}
+
 func (app *application) DeleteGame(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))
