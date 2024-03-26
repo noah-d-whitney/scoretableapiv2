@@ -2,6 +2,7 @@ package data
 
 import (
 	"ScoreTableApi/internal/pins"
+	"ScoreTableApi/internal/validator"
 	"database/sql"
 	json2 "encoding/json"
 	"errors"
@@ -31,6 +32,50 @@ type Game struct {
 		Home *Team `json:"home,omitempty"`
 		Away *Team `json:"away,omitempty"`
 	} `json:"teams,omitempty"`
+}
+
+func (g Game) ToDto() Dto {
+	return GameDto{
+		Pin:          g.PinID.Pin,
+		Status:       g.Status,
+		DateTime:     *g.DateTime,
+		TeamSize:     *g.TeamSize,
+		Type:         *g.Type,
+		PeriodLength: g.PeriodLength,
+		PeriodCount:  *g.PeriodCount,
+		ScoreTarget:  *g.ScoreTarget,
+		Teams: struct {
+			Home *Team `json:"home,omitempty"`
+			Away *Team `json:"away,omitempty"`
+		}{Home: g.Teams.Home, Away: g.Teams.Away},
+	}
+}
+
+type GameDto struct {
+	Pin          string       `json:"pin"`
+	Status       GameStatus   `json:"status"`
+	DateTime     time.Time    `json:"date_time"`
+	TeamSize     int64        `json:"team_size"`
+	Type         GameType     `json:"type"`
+	PeriodLength PeriodLength `json:"period_length,omitempty"`
+	PeriodCount  int64        `json:"period_count,omitempty"`
+	ScoreTarget  int64        `json:"score_target,omitempty"`
+	Teams        struct {
+		Home *Team `json:"home,omitempty"`
+		Away *Team `json:"away,omitempty"`
+	} `json:"teams,omitempty"`
+}
+
+func (dto GameDto) Convert(_ *validator.Validator) (Resource, any) {
+	return nil, nil
+}
+
+func (dto GameDto) Merge(_ *validator.Validator, _ Resource) any {
+	return nil
+}
+
+func (dto GameDto) validate(_ *validator.Validator) {
+	return
 }
 
 type GameModel struct {

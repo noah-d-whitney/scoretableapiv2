@@ -162,9 +162,6 @@ func (app *application) UpdatePlayer(w http.ResponseWriter, r *http.Request) {
 	if input.PrefNumber != nil {
 		player.PrefNumber = *input.PrefNumber
 	}
-	if input.IsActive != nil {
-		player.IsActive = *input.IsActive
-	}
 
 	v := validator.New()
 	if data.ValidatePlayer(v, player); !v.Valid() {
