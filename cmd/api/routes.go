@@ -59,6 +59,7 @@ func (app *application) routes() http.Handler {
 	router.With(app.requireActivatedUser).Get("/v1/game/{id}", app.GetGame)
 	router.With(app.requireActivatedUser).Delete("/v1/game/{id}", app.DeleteGame)
 	router.With(app.requireActivatedUser).Get("/v1/game", app.GetAllGames)
+	router.With(app.requireAuthenticatedUser).Patch("/v1/game/{id}", app.UpdateGame)
 
 	return router
 }

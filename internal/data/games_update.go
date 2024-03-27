@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-func (m *GameModel) Update(game *Game) error {
+func (m *GameModel) Update(game *Game, aux GameAux) error {
 	stmt := `
 		UPDATE games
-			SET date_time = $1, team_size = $2, period_length = $3, period_count = $4, 
+			SET date_time = $1, team_size = $2, period_length = $3, period_count = $4,
 				score_target = $5
 			WHERE user_id = $6
 			  	AND id = $7
@@ -26,4 +26,20 @@ func (m *GameModel) Update(game *Game) error {
 		return err
 	}
 
+	err = tx.QueryRowContext(ctx, stmt, args...).Scan(&game.Version)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return rollbackErr
+		}
+		return err
+	}
+
+	// TODO check team size on edit
+	//if *game.TeamSize > maxTeamSize {
+	//	return ModelValidationErr{map[string]string{
+	//		"team_size": "cannot be larger than the size of currently assigned teams",
+	//	}}
+	//}
+
+	return nil
 }

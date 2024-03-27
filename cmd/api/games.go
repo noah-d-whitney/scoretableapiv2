@@ -153,105 +153,6 @@ Possible include values for teams are: "%s"`, strings.Join(input.Includes.SafeLi
 	return
 }
 
-type UpdateGameDto struct {
-	DateTime     *time.Time
-	TeamSize     *int64
-	Type         *data.GameType
-	PeriodLength data.PeriodLength
-	PeriodCount  *int64
-	ScoreTarget  *int64
-	HomeTeamPin  *string
-	AwayTeamPin  *string
-}
-
-func (dto UpdateGameDto) validate(v *validator.Validator) {
-	v.Check(dto.DateTime != nil, "date_time", "must be provided")
-	v.Check(dto.TeamSize != nil, "team_size", "must be provided")
-	v.Check(dto.Type != nil, "type", "must be provided")
-	if dto.HomeTeamPin == dto.AwayTeamPin {
-		v.AddError("home_team_pin", "cannot match away team")
-		v.AddError("away_team_pin", "cannot match home team")
-	}
-	if !v.Valid() {
-		return
-	}
-
-	v.Check(dto.DateTime.After(time.Now()), "date_time", "must be in the future")
-	v.Check(*dto.TeamSize > 0, "team_size", "must be greater than 0")
-	v.Check(*dto.TeamSize <= 5, "team_size", "must be 5 or less")
-	v.Check(*dto.Type == data.GameTypeTimed || *dto.Type == data.GameTypeTarget, "type",
-		fmt.Sprintf(`Must be one of the following: "%s", "%s"`, data.GameTypeTimed,
-			data.GameTypeTarget))
-
-	if *dto.Type == data.GameTypeTimed {
-		v.Check(dto.PeriodCount != nil, "period_count", "must be provided for timed game")
-		v.Check(dto.PeriodLength != 0, "period_length", "must be provided for timed game")
-		v.Check(dto.ScoreTarget == nil, "score_target", "cannot be provided for a timed game")
-		if !v.Valid() {
-			return
-		}
-
-		v.Check(dto.PeriodLength.Duration() <= 30*time.Minute, "period_count",
-			"must be 30 minutes or less")
-
-		v.Check(*dto.PeriodCount > 0, "period_count", "must be greater than 0")
-		v.Check(*dto.PeriodCount <= 4, "period_count", "must be 4 or less")
-	}
-
-	if *dto.Type == data.GameTypeTarget {
-		v.Check(dto.ScoreTarget != nil, "score_target", "must be provided for target game")
-		v.Check(dto.PeriodCount == nil, "period_count", "cannot be provided for a target game")
-		v.Check(dto.PeriodLength == 0, "period_length", "cannot be provided for a target game")
-		if !v.Valid() {
-			return
-		}
-
-		v.Check(*dto.ScoreTarget > 0, "score_target", "must be greater than 0")
-		v.Check(*dto.ScoreTarget <= 100, "score_target", "must be 100 or less")
-	}
-
-}
-
-func (dto UpdateGameDto) Convert(v *validator.Validator) (data.Resource, any) {
-	dto.validate(v)
-	if !v.Valid() {
-		return nil, nil
-	}
-
-	game := &data.Game{
-		DateTime:     dto.DateTime,
-		TeamSize:     dto.TeamSize,
-		Type:         dto.Type,
-		PeriodLength: dto.PeriodLength,
-		PeriodCount:  dto.PeriodCount,
-		ScoreTarget:  dto.ScoreTarget,
-	}
-
-	aux := struct {
-		HomeTeamPin string
-		AwayTeamPin string
-	}{
-		HomeTeamPin: *dto.HomeTeamPin,
-		AwayTeamPin: *dto.AwayTeamPin,
-	}
-
-	return game, aux
-}
-
-func (dto UpdateGameDto) Merge(v *validator.Validator, r data.Resource) any {
-	dto.validate(v)
-	if !v.Valid() {
-		return nil
-	}
-
-	switch r {
-	case r.(data.Game):
-
-	default:
-		return nil
-	}
-}
-
 func (app *application) UpdateGame(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))
@@ -267,7 +168,7 @@ func (app *application) UpdateGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input UpdateGameDto
+	var input data.UpdateGameDto
 	err = app.readJSON(w, r, &input)
 	if err != nil {
 		app.badRequestResponse(w, r, err)
@@ -275,8 +176,23 @@ func (app *application) UpdateGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v := validator.New()
-	input.ToResource(v)
+	aux := input.Merge(v, game)
+	if !v.Valid() {
+		app.failedValidationResponse(w, r, v.Errors)
+		return
+	}
 
+	err = app.models.Games.Update(game, aux)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"game": game}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+	return
 }
 
 func (app *application) DeleteGame(w http.ResponseWriter, r *http.Request) {
