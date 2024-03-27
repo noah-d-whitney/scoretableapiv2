@@ -48,11 +48,12 @@ type config struct {
 }
 
 type application struct {
-	logger *jsonlog.Logger
-	config config
-	models data.Models
-	mailer mailer.Mailer
-	wg     sync.WaitGroup
+	logger          *jsonlog.Logger
+	config          config
+	models          data.Models
+	mailer          mailer.Mailer
+	gamesInProgress map[string]*data.GameHub
+	wg              sync.WaitGroup
 }
 
 func main() {
@@ -125,9 +126,10 @@ func main() {
 	}))
 
 	app := &application{
-		logger: logger,
-		config: cfg,
-		models: data.NewModels(db),
+		logger:          logger,
+		config:          cfg,
+		models:          data.NewModels(db),
+		gamesInProgress: make(map[string]*data.GameHub),
 		mailer: mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password,
 			cfg.smtp.sender),
 	}

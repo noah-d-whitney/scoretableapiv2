@@ -52,9 +52,9 @@ func (m *PlayerModel) Insert(player *Player) error {
 	player.PinId = *pin
 
 	stmt := `
-		INSERT INTO players (user_id, pin_id, first_name, last_name, pref_number, is_active)
-		VALUES ($1, $2, $3, $4, $5, true)
-		RETURNING id, created_at, version, is_active`
+		INSERT INTO players (user_id, pin_id, first_name, last_name, pref_number)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, created_at, version`
 
 	args := []any{
 		player.UserId,

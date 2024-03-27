@@ -338,6 +338,8 @@ func (m *TeamModel) Update(team *Team) error {
 		case err.Error() == `pq: duplicate key value violates unique constraint`+
 			`"unq_userid_team_name"`:
 			return ErrDuplicateTeamName
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrEditConflict
 		default:
 			return err
 		}

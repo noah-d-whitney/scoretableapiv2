@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -203,4 +205,53 @@ func (app *application) DeleteGame(w http.ResponseWriter, r *http.Request) {
 		app.serverErrorResponse(w, r, err)
 	}
 	return
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
+func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
+	//userID := app.contextGetUser(r).ID
+	//pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	game, err := app.models.Games.Start(7, "tx38l6", app.gamesInProgress)
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	conn.WriteJSON(game)
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("error: %v", err)
+			}
+			break
+		}
+		app.gamesInProgress["tx38l6"].Events <- message
+	}
+
+}
+
+func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
+	//userID := app.contextGetUser(r).ID
+	//pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	select {
+	case message := <-app.gamesInProgress["tx38l6"].Events:
+		conn.WriteJSON(string(message))
+	}
+
 }

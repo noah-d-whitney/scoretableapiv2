@@ -234,6 +234,43 @@ func unassignGameTeam(gameID, userID int64, teamSide GameTeamSide, tx *sql.Tx,
 	return nil
 }
 
+func validateGameSize(game *Game, tx *sql.Tx, ctx context.Context) error {
+	stmt := `
+		SELECT LEAST((
+    		SELECT count(*)
+        		FROM teams_players tp
+					JOIN public.games_teams gt on tp.team_id = gt.team_id
+        	WHERE gt.game_id = g.id AND side = 0
+    	)::bigint, (
+    		SELECT count(*)
+        		FROM teams_players tp
+                 	JOIN public.games_teams gt on tp.team_id = gt.team_id
+        		WHERE gt.game_id = g.id AND side = 1
+    	)::bigint) as game_team_size_min
+		FROM games g
+		WHERE g.user_id = $1 AND g.id = $2`
+
+	var maxTeamSize int64
+	err := tx.QueryRowContext(ctx, stmt, game.UserID, game.ID).Scan(&maxTeamSize)
+	if err != nil {
+		return err
+	}
+
+	// maxTeamSize is 0 if game doesn't have both teams assigned
+	if maxTeamSize == 0 {
+		return nil
+	}
+
+	if game.TeamSize > maxTeamSize {
+		return ModelValidationErr{Errors: map[string]string{
+			"team_size": fmt.Sprintf(`specified team size (`+
+				`%d) must be at most the size of smallest team (%d)`, game.TeamSize, maxTeamSize),
+		}}
+	}
+
+	return nil
+}
+
 // TODO refactor or make rules in DB
 func checkTeamConflict(game *Game, tx *sql.Tx, ctx context.Context) error {
 	stmt := `
