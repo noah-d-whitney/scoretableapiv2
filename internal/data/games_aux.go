@@ -1,12 +1,10 @@
 package data
 
 import (
-	"ScoreTableApi/internal/validator"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 )
 
 func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
@@ -281,49 +279,4 @@ func checkTeamConflict(game *Game, tx *sql.Tx, ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func ValidateGame(v *validator.Validator, game *Game) {
-	v.Check(game.DateTime != nil, "date_time", "must be provided")
-	v.Check(game.TeamSize != nil, "team_size", "must be provided")
-	v.Check(game.Type != nil, "type", "must be provided")
-	if game.HomeTeamPin == game.AwayTeamPin {
-		v.AddError("home_team_pin", "cannot match away team")
-		v.AddError("away_team_pin", "cannot match home team")
-	}
-	if !v.Valid() {
-		return
-	}
-
-	v.Check(game.DateTime.After(time.Now()), "date_time", "must be in the future")
-	v.Check(*game.TeamSize > 0, "team_size", "must be greater than 0")
-	v.Check(*game.TeamSize <= 5, "team_size", "must be 5 or less")
-	v.Check(*game.Type == GameTypeTimed || *game.Type == GameTypeTarget, "type",
-		fmt.Sprintf(`Must be one of the following: "%s", "%s"`, GameTypeTimed, GameTypeTarget))
-
-	if *game.Type == GameTypeTimed {
-		v.Check(game.PeriodCount != nil, "period_count", "must be provided for timed game")
-		v.Check(game.PeriodLength != 0, "period_length", "must be provided for timed game")
-		v.Check(game.ScoreTarget == nil, "score_target", "cannot be provided for a timed game")
-		if !v.Valid() {
-			return
-		}
-
-		v.Check(game.PeriodLength.Duration() <= 30*time.Minute, "period_count", "must be 30 minutes or less")
-
-		v.Check(*game.PeriodCount > 0, "period_count", "must be greater than 0")
-		v.Check(*game.PeriodCount <= 4, "period_count", "must be 4 or less")
-	}
-
-	if *game.Type == GameTypeTarget {
-		v.Check(game.ScoreTarget != nil, "score_target", "must be provided for target game")
-		v.Check(game.PeriodCount == nil, "period_count", "cannot be provided for a target game")
-		v.Check(game.PeriodLength == 0, "period_length", "cannot be provided for a target game")
-		if !v.Valid() {
-			return
-		}
-
-		v.Check(*game.ScoreTarget > 0, "score_target", "must be greater than 0")
-		v.Check(*game.ScoreTarget <= 100, "score_target", "must be 100 or less")
-	}
 }

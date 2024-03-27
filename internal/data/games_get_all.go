@@ -138,8 +138,8 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string)
 			}
 			return nil, GamesMetadata{}, err
 		}
-		g.HomeTeamPin = ""
-		g.AwayTeamPin = ""
+		g.HomeTeamPin = nil
+		g.AwayTeamPin = nil
 	}
 
 	if slices.Contains(includes, "players") {

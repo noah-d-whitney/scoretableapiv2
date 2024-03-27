@@ -13,17 +13,7 @@ import (
 )
 
 func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		DateTime     *time.Time         `json:"date_time"`
-		TeamSize     *int64             `json:"team_size"`
-		Type         *string            `json:"type"`
-		PeriodLength *data.PeriodLength `json:"period_length"`
-		PeriodCount  *int64             `json:"period_count"`
-		ScoreTarget  *int64             `json:"score_target"`
-		HomeTeamPin  string             `json:"home_team_pin"`
-		AwayTeamPin  string             `json:"away_team_pin"`
-	}
-
+	var input data.GameDto
 	err := app.readJSON(w, r, &input)
 	if err != nil {
 		app.badRequestResponse(w, r, err)
@@ -33,19 +23,10 @@ func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
 	v := validator.New()
 
-	game := &data.Game{
-		UserID:       userID,
-		DateTime:     input.DateTime,
-		TeamSize:     input.TeamSize,
-		Type:         (*data.GameType)(input.Type),
-		PeriodLength: *input.PeriodLength,
-		PeriodCount:  input.PeriodCount,
-		ScoreTarget:  input.ScoreTarget,
-		HomeTeamPin:  input.HomeTeamPin,
-		AwayTeamPin:  input.AwayTeamPin,
-	}
+	game := input.Convert(v)
+	game.UserID = userID
 
-	if data.ValidateGame(v, game); !v.Valid() {
+	if !v.Valid() {
 		app.failedValidationResponse(w, r, v.Errors)
 		return
 	}
@@ -168,7 +149,7 @@ func (app *application) UpdateGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input data.UpdateGameDto
+	var input data.GameDto
 	err = app.readJSON(w, r, &input)
 	if err != nil {
 		app.badRequestResponse(w, r, err)
@@ -176,15 +157,21 @@ func (app *application) UpdateGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v := validator.New()
-	aux := input.Merge(v, game)
+	input.Merge(v, game)
 	if !v.Valid() {
 		app.failedValidationResponse(w, r, v.Errors)
 		return
 	}
 
-	err = app.models.Games.Update(game, aux)
+	err = app.models.Games.Update(game)
 	if err != nil {
-		app.serverErrorResponse(w, r, err)
+		var modelValidationErr data.ModelValidationErr
+		switch {
+		case errors.As(err, &modelValidationErr):
+			app.failedValidationResponse(w, r, modelValidationErr.Errors)
+		default:
+			app.badRequestResponse(w, r, err)
+		}
 		return
 	}
 

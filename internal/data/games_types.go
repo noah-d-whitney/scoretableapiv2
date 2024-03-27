@@ -14,73 +14,38 @@ import (
 )
 
 type Game struct {
-	ID           int64        `json:"-"`
-	UserID       int64        `json:"-"`
-	PinID        pins.Pin     `json:"pin_id"`
-	CreatedAt    time.Time    `json:"-"`
-	Version      int64        `json:"-"`
-	Status       GameStatus   `json:"status"`
-	DateTime     *time.Time   `json:"date_time"`
-	TeamSize     *int64       `json:"team_size"`
-	Type         *GameType    `json:"type"`
-	PeriodLength PeriodLength `json:"period_length,omitempty"`
-	PeriodCount  *int64       `json:"period_count,omitempty"`
-	ScoreTarget  *int64       `json:"score_target,omitempty"`
-	HomeTeamPin  string       `json:"home_team_pin,omitempty"`
-	AwayTeamPin  string       `json:"away_team_pin,omitempty"`
+	ID           int64         `json:"-"`
+	UserID       int64         `json:"-"`
+	PinID        pins.Pin      `json:"pin_id"`
+	CreatedAt    time.Time     `json:"-"`
+	Version      int64         `json:"-"`
+	Status       GameStatus    `json:"status"`
+	DateTime     time.Time     `json:"date_time"`
+	TeamSize     int64         `json:"team_size"`
+	Type         GameType      `json:"type"`
+	PeriodLength *PeriodLength `json:"period_length,omitempty"`
+	PeriodCount  *int64        `json:"period_count,omitempty"`
+	ScoreTarget  *int64        `json:"score_target,omitempty"`
+	HomeTeamPin  *string       `json:"home_team_pin,omitempty"`
+	AwayTeamPin  *string       `json:"away_team_pin,omitempty"`
 	Teams        struct {
 		Home *Team `json:"home,omitempty"`
 		Away *Team `json:"away,omitempty"`
 	} `json:"teams,omitempty"`
-}
-
-func (g Game) ToDto() GameDto {
-	return GameDto{
-		Pin:          g.PinID.Pin,
-		Status:       g.Status,
-		DateTime:     *g.DateTime,
-		TeamSize:     *g.TeamSize,
-		Type:         *g.Type,
-		PeriodLength: g.PeriodLength,
-		PeriodCount:  *g.PeriodCount,
-		ScoreTarget:  *g.ScoreTarget,
-		Teams: struct {
-			Home *Team `json:"home,omitempty"`
-			Away *Team `json:"away,omitempty"`
-		}{Home: g.Teams.Home, Away: g.Teams.Away},
-	}
 }
 
 type GameDto struct {
-	Pin          string       `json:"pin"`
-	Status       GameStatus   `json:"status"`
-	DateTime     time.Time    `json:"date_time"`
-	TeamSize     int64        `json:"team_size"`
-	Type         GameType     `json:"type"`
-	PeriodLength PeriodLength `json:"period_length,omitempty"`
-	PeriodCount  int64        `json:"period_count,omitempty"`
-	ScoreTarget  int64        `json:"score_target,omitempty"`
-	Teams        struct {
-		Home *Team `json:"home,omitempty"`
-		Away *Team `json:"away,omitempty"`
-	} `json:"teams,omitempty"`
+	DateTime     *time.Time    `json:"date_time"`
+	TeamSize     *int64        `json:"team_size"`
+	Type         *GameType     `json:"type"`
+	PeriodLength *PeriodLength `json:"period_length"`
+	PeriodCount  *int64        `json:"period_count"`
+	ScoreTarget  *int64        `json:"score_target"`
+	HomeTeamPin  *string       `json:"home_team_pin"`
+	AwayTeamPin  *string       `json:"away_team_pin"`
 }
 
-type UpdateGameDto struct {
-	DateTime     *time.Time   `json:"date_time"`
-	TeamSize     *int64       `json:"team_size"`
-	Type         *GameType    `json:"type"`
-	PeriodLength PeriodLength `json:"period_length"`
-	PeriodCount  *int64       `json:"period_count"`
-	ScoreTarget  *int64       `json:"score_target"`
-	HomeTeamPin  *string      `json:"home_team_pin"`
-	AwayTeamPin  *string      `json:"away_team_pin"`
-}
-
-func (dto UpdateGameDto) validate(v *validator.Validator) {
-	//v.Check(dto.DateTime != nil, "date_time", "must be provided")
-	//v.Check(dto.TeamSize != nil, "team_size", "must be provided")
-	//v.Check(dto.Type != nil, "type", "must be provided")
+func (dto GameDto) validate(v *validator.Validator) {
 	if dto.HomeTeamPin != nil || dto.AwayTeamPin != nil {
 		if dto.HomeTeamPin == dto.AwayTeamPin {
 			v.AddError("home_team_pin", "cannot match away team")
@@ -93,17 +58,21 @@ func (dto UpdateGameDto) validate(v *validator.Validator) {
 
 	if dto.DateTime != nil {
 		v.Check(dto.DateTime.After(time.Now()), "date_time", "must be in the future")
+	}
+
+	if dto.TeamSize != nil {
 		v.Check(*dto.TeamSize > 0, "team_size", "must be greater than 0")
 		v.Check(*dto.TeamSize <= 5, "team_size", "must be 5 or less")
-		v.Check(*dto.Type == GameTypeTimed || *dto.Type == GameTypeTarget, "type",
-			fmt.Sprintf(`Must be one of the following: "%s", "%s"`, GameTypeTimed,
-				GameTypeTarget))
 	}
 
 	if dto.Type != nil {
+		v.Check(*dto.Type == GameTypeTimed || *dto.Type == GameTypeTarget, "type",
+			fmt.Sprintf(`Must be one of the following: "%s", "%s"`, GameTypeTimed,
+				GameTypeTarget))
+
 		if *dto.Type == GameTypeTimed {
 			v.Check(dto.PeriodCount != nil, "period_count", "must be provided for timed game")
-			v.Check(dto.PeriodLength != 0, "period_length", "must be provided for timed game")
+			v.Check(dto.PeriodLength != nil, "period_length", "must be provided for timed game")
 			v.Check(dto.ScoreTarget == nil, "score_target", "cannot be provided for a timed game")
 			if !v.Valid() {
 				return
@@ -119,7 +88,8 @@ func (dto UpdateGameDto) validate(v *validator.Validator) {
 		if *dto.Type == GameTypeTarget {
 			v.Check(dto.ScoreTarget != nil, "score_target", "must be provided for target game")
 			v.Check(dto.PeriodCount == nil, "period_count", "cannot be provided for a target game")
-			v.Check(dto.PeriodLength == 0, "period_length", "cannot be provided for a target game")
+			v.Check(dto.PeriodLength == nil, "period_length",
+				"cannot be provided for a target game")
 			if !v.Valid() {
 				return
 			}
@@ -127,55 +97,104 @@ func (dto UpdateGameDto) validate(v *validator.Validator) {
 			v.Check(*dto.ScoreTarget > 0, "score_target", "must be greater than 0")
 			v.Check(*dto.ScoreTarget <= 100, "score_target", "must be 100 or less")
 		}
+	} else {
+		v.Check(dto.ScoreTarget == nil, "score_target", "cannot be provided without type field")
+		v.Check(dto.PeriodCount == nil, "period_count", "cannot be provided without type field")
+		v.Check(dto.PeriodLength == nil, "period_length", "cannot be provided without type field")
 	}
 }
 
-func (dto UpdateGameDto) Convert(v *validator.Validator) (*Game, GameAux) {
+func (dto GameDto) Merge(v *validator.Validator, g *Game) {
 	dto.validate(v)
 	if !v.Valid() {
-		return nil, GameAux{}
+		return
 	}
 
-	game := &Game{
-		DateTime:     dto.DateTime,
-		TeamSize:     dto.TeamSize,
-		Type:         dto.Type,
-		PeriodLength: dto.PeriodLength,
-		PeriodCount:  dto.PeriodCount,
-		ScoreTarget:  dto.ScoreTarget,
+	if dto.DateTime != nil {
+		if *dto.DateTime == g.DateTime {
+			v.AddError("date_time", "cannot be old value")
+		} else {
+			g.DateTime = *dto.DateTime
+		}
+	}
+	if dto.TeamSize != nil {
+		if *dto.TeamSize == g.TeamSize {
+			v.AddError("team_size", "cannot be old value")
+		} else {
+			g.TeamSize = *dto.TeamSize
+		}
+	}
+	if dto.PeriodLength != nil {
+		if dto.PeriodLength == g.PeriodLength {
+			v.AddError("period_length", "cannot be old value")
+		} else {
+			g.PeriodLength = dto.PeriodLength
+		}
+	}
+	if dto.PeriodCount != nil {
+		if dto.PeriodCount == g.PeriodCount {
+			v.AddError("period_count", "cannot be old value")
+		} else {
+			g.PeriodCount = dto.PeriodCount
+		}
+	}
+	if dto.ScoreTarget != nil {
+		if dto.ScoreTarget == g.ScoreTarget {
+			v.AddError("score_target", "cannot be old value")
+		} else {
+			g.ScoreTarget = dto.ScoreTarget
+		}
+	}
+	if dto.HomeTeamPin != nil {
+		g.HomeTeamPin = dto.HomeTeamPin
+	}
+	if dto.AwayTeamPin != nil {
+		g.AwayTeamPin = dto.AwayTeamPin
 	}
 
-	aux := GameAux{
-		HomeTeamPin: dto.HomeTeamPin,
-		AwayTeamPin: dto.AwayTeamPin,
-	}
-
-	return game, aux
+	return
 }
 
-func (dto UpdateGameDto) Merge(v *validator.Validator, g *Game) GameAux {
+func (dto GameDto) Convert(v *validator.Validator) *Game {
+	if dto.DateTime == nil {
+		v.AddError("date_time", "must be provided")
+	}
+	if dto.TeamSize == nil {
+		v.AddError("team_size", "must be provided")
+	}
+	if dto.Type == nil {
+		v.AddError("type", "must be provided")
+	}
+	if !v.Valid() {
+		return nil
+	}
+
 	dto.validate(v)
 	if !v.Valid() {
-		return GameAux{}
+		return nil
 	}
 
-	g.DateTime = dto.DateTime
-	g.TeamSize = dto.TeamSize
-	g.PeriodLength = dto.PeriodLength
-	g.PeriodCount = dto.PeriodCount
-	g.ScoreTarget = dto.ScoreTarget
-
-	aux := GameAux{
-		HomeTeamPin: dto.HomeTeamPin,
-		AwayTeamPin: dto.AwayTeamPin,
+	var game *Game
+	game.DateTime = *dto.DateTime
+	game.TeamSize = *dto.TeamSize
+	game.Type = *dto.Type
+	if dto.PeriodLength != nil {
+		game.PeriodLength = dto.PeriodLength
+	}
+	if dto.PeriodCount != nil {
+		game.PeriodCount = dto.PeriodCount
+	}
+	if dto.ScoreTarget != nil {
+		game.ScoreTarget = dto.ScoreTarget
+	}
+	if dto.HomeTeamPin != nil {
+		game.HomeTeamPin = dto.HomeTeamPin
+	}
+	if dto.AwayTeamPin != nil {
+		game.AwayTeamPin = dto.AwayTeamPin
 	}
 
-	return aux
-}
-
-type GameAux struct {
-	HomeTeamPin *string
-	AwayTeamPin *string
+	return game
 }
 
 type GameModel struct {

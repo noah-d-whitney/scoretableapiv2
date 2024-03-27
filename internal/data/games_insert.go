@@ -56,8 +56,8 @@ func (m *GameModel) Insert(game *Game) error {
 		return err
 	}
 
-	if game.HomeTeamPin != "" {
-		err := assignGameTeam(game.ID, game.UserID, game.HomeTeamPin, TeamHome, tx, ctx)
+	if game.HomeTeamPin != nil {
+		err := assignGameTeam(game.ID, game.UserID, *game.HomeTeamPin, TeamHome, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
@@ -66,8 +66,8 @@ func (m *GameModel) Insert(game *Game) error {
 		}
 	}
 
-	if game.AwayTeamPin != "" {
-		err := assignGameTeam(game.ID, game.UserID, game.AwayTeamPin, TeamAway, tx, ctx)
+	if game.AwayTeamPin != nil {
+		err := assignGameTeam(game.ID, game.UserID, *game.AwayTeamPin, TeamAway, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr
@@ -76,7 +76,7 @@ func (m *GameModel) Insert(game *Game) error {
 		}
 	}
 
-	if game.AwayTeamPin != "" || game.HomeTeamPin != "" {
+	if game.AwayTeamPin != nil || game.HomeTeamPin != nil {
 		err := getGameTeams(game, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
@@ -84,8 +84,8 @@ func (m *GameModel) Insert(game *Game) error {
 			}
 			return err
 		}
-		game.AwayTeamPin = ""
-		game.HomeTeamPin = ""
+		game.AwayTeamPin = nil
+		game.HomeTeamPin = nil
 
 		err = checkTeamConflict(game, tx, ctx)
 		if err != nil {
