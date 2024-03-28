@@ -1,6 +1,7 @@
 package data
 
 import (
+	"errors"
 	"strings"
 	"time"
 )
@@ -29,4 +30,29 @@ func parsePinList(pins []string) (assignList []string, unassignList []string) {
 	}
 
 	return
+}
+
+type keysWithTypes struct {
+	key     string
+	keyType int
+	dest    any
+}
+
+var ErrNoValueForKey = errors.New("no value found for key")
+var ErrValueNotAsserted = errors.New("value could not be asserted to specified type")
+
+func checkAndAssertFromMap[T any](src map[string]any, key string, dest T) error {
+	data, ok := src[key]
+	if !ok {
+		return ErrNoValueForKey
+	}
+
+	value, ok := data.(T)
+	if !ok {
+		return ErrValueNotAsserted
+	}
+
+	dest = value
+
+	return nil
 }

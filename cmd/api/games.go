@@ -260,7 +260,7 @@ func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
 	watcher := data.Watcher{
 		Hub:     hub,
 		Conn:    conn,
-		Receive: make(chan *data.GameEvent),
+		Receive: make(chan data.GameEvent),
 		Close:   make(chan error),
 	}
 	watcher.Hub.JoinWatcher <- &watcher

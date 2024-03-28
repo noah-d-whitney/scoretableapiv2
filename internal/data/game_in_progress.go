@@ -12,14 +12,127 @@ import (
 	"time"
 )
 
-type GameEvent struct {
-	PlayerPin string `json:"player_pin"`
-	Stat      string `json:"stat"`
-	Action    string `json:"action"`
+type GenericEvent struct {
+	Type *GameEventType `json:"type"`
+	Data map[string]any `json:"data"`
+}
+type GameEventType int
+
+const (
+	score GameEventType = iota
+	foul
+)
+
+var ErrEventParseFailed = errors.New("could not parse game event")
+
+func (e *GenericEvent) parseEvent() (GameEvent, error) {
+	if e.Type == nil {
+		return GameScoreEvent{}, ErrEventParseFailed
+	}
+
+	switch *e.Type {
+	case score:
+		event := GameScoreEvent{}
+		err := checkAndAssertFromMap(e.Data, "player_pin", &event.PlayerPin)
+		if err != nil {
+			return GameScoreEvent{}, ErrEventParseFailed
+		}
+		err = checkAndAssertFromMap(e.Data, "action", &event.Action)
+		if err != nil {
+			return GameScoreEvent{}, ErrEventParseFailed
+		}
+		err = event.validate()
+		if err != nil {
+			return GameScoreEvent{}, ErrEventParseFailed
+		}
+		return event, nil
+	case foul:
+		event := GameFoulEvent{}
+		err := checkAndAssertFromMap(e.Data, "player_pin", &event.PlayerPin)
+		if err != nil {
+			return GameFoulEvent{}, ErrEventParseFailed
+		}
+		err = checkAndAssertFromMap(e.Data, "type", &event.Type)
+		if err != nil {
+			return GameFoulEvent{}, ErrEventParseFailed
+		}
+		err = checkAndAssertFromMap(e.Data, "is_team_foul", &event.IsTeamFoul)
+		if err != nil {
+			return GameFoulEvent{}, ErrEventParseFailed
+		}
+		return event, nil
+	}
+	return GameFoulEvent{}, nil
+}
+
+type GameEvent interface {
+	Execute(hub *GameHub)
+}
+
+var ErrEventValidationFailed = errors.New("event validation failed")
+
+type GameScoreEvent struct {
+	PlayerPin string
+	Action    GameScoreAction
+}
+type GameScoreAction int
+
+const (
+	foul_shot GameScoreAction = iota
+	two_pointer
+	three_pointer
+)
+
+func (e GameScoreEvent) validate() error {
+	if e.Action < 0 || e.Action > 2 {
+		return ErrEventValidationFailed
+	}
+	return nil
+}
+
+func (e GameScoreEvent) Execute(h *GameHub) {
+	statCol := h.GameInProgress.playerStats[e.PlayerPin]
+	statCol.mu.Lock()
+	switch e.Action {
+	case foul_shot:
+		statCol.stats["pts"] += 1
+	case two_pointer:
+		statCol.stats["pts"] += 2
+	case three_pointer:
+		statCol.stats["pts"] += 3
+	}
+	statCol.mu.Unlock()
+
+	for watcher := range h.watchers {
+		select {
+		case watcher.Receive <- e:
+		default:
+			close(watcher.Receive)
+			delete(h.watchers, watcher)
+		}
+	}
+}
+
+type GameFoulEvent struct {
+	PlayerPin  string
+	IsTeamFoul bool
+	Type       GameFoulType
+}
+
+type GameFoulType int
+
+const (
+	common GameFoulType = iota
+	flagrant
+	loose_ball
+)
+
+func (e GameFoulEvent) Execute(h *GameHub) {
+	return
 }
 
 type GameInProgress struct {
-	stats map[string]*PlayerStats
+	playerStats map[string]*PlayerStats
 }
 
 type PlayerStats struct {
@@ -29,10 +142,10 @@ type PlayerStats struct {
 
 type GameHub struct {
 	AllowedKeepers []int64
-	Stats          *GameInProgress
+	GameInProgress *GameInProgress
 	keepers        map[*Keeper]bool
 	watchers       map[*Watcher]bool
-	Events         chan *GameEvent
+	Events         chan GameEvent
 	JoinWatcher    chan *Watcher
 	JoinKeeper     chan *Keeper
 	LeaveWatcher   chan *Watcher
@@ -57,10 +170,10 @@ func NewGameHub(g *Game) *GameHub {
 
 	return &GameHub{
 		AllowedKeepers: allowedKeepers,
-		Stats:          &GameInProgress{stats: statsMap},
+		GameInProgress: &GameInProgress{playerStats: statsMap},
 		keepers:        make(map[*Keeper]bool),
 		watchers:       make(map[*Watcher]bool),
-		Events:         make(chan *GameEvent),
+		Events:         make(chan GameEvent),
 		JoinWatcher:    make(chan *Watcher),
 		JoinKeeper:     make(chan *Keeper),
 		LeaveKeeper:    make(chan *Keeper),
@@ -87,16 +200,13 @@ func (h *GameHub) Run() {
 				delete(h.keepers, keeper)
 			}
 		case event := <-h.Events:
-			for watcher := range h.watchers {
-				select {
-				case watcher.Receive <- event:
-				default:
-					close(watcher.Receive)
-					delete(h.watchers, watcher)
-				}
-			}
+			event.Execute(h)
 		}
 	}
+}
+
+func (h *GameHub) handleEvent(e *GameEvent) (map[string]int, error) {
+	return nil, nil
 }
 
 type Keeper struct {
@@ -120,15 +230,19 @@ func (k *Keeper) ReadEvents() {
 				pongWait))
 			return nil
 		})
-		var event GameEvent
-		err := k.Conn.ReadJSON(&event)
+		var genericEvent GenericEvent
+		err := k.Conn.ReadJSON(&genericEvent)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
 			break
 		}
-		k.Hub.Events <- &event
+		event, err := genericEvent.parseEvent()
+		if err != nil {
+			return
+		}
+		k.Hub.Events <- event
 	}
 }
 
@@ -154,7 +268,7 @@ var (
 type Watcher struct {
 	Hub     *GameHub
 	Conn    *websocket.Conn
-	Receive chan *GameEvent
+	Receive chan GameEvent
 	Close   chan error
 }
 
