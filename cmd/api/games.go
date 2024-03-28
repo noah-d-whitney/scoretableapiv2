@@ -216,15 +216,21 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	//userID := app.contextGetUser(r).ID
 	//pin := strings.ToLower(chi.URLParam(r, "id"))
 
+	// Get game from db and send
+	// create game stat object and hub
+	// Accept message
+	// Update game stat in hub
+	// Send updates to all clients
+	// Send event to DB concurrently
 	game, err := app.models.Games.Start(7, "tx38l6", app.gamesInProgress)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		app.serverErrorResponse(w, r, err)
 		return
 	}
 
-	conn.WriteJSON(game)
+	err = conn.WriteJSON(game)
 
 	for {
 		_, message, err := conn.ReadMessage()
@@ -236,7 +242,6 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 		}
 		app.gamesInProgress["tx38l6"].Events <- message
 	}
-
 }
 
 func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {

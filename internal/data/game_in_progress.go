@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/gorilla/websocket"
+	"sync"
 )
 
 type GameEvent struct {
@@ -12,11 +13,50 @@ type GameEvent struct {
 	Action    string `json:"action"`
 }
 
+type GameInProgress struct {
+	stats map[string]*PlayerStats
+}
+
+type PlayerStats struct {
+	stats map[string]int
+	mu    sync.Mutex
+}
+
 type GameHub struct {
-	UserID   int64
-	keepers  map[*Keeper]bool
-	watchers map[*Watcher]bool
-	Events   chan []byte
+	AllowedKeepers []int64
+	Stats          *GameInProgress
+	keepers        map[*Keeper]bool
+	watchers       map[*Watcher]bool
+	Events         chan []byte
+	JoinWatcher    chan *Watcher
+	JoinKeeper     chan *Keeper
+}
+
+func NewGameHub(g *Game) *GameHub {
+	allowedKeepers := []int64{g.UserID}
+
+	var statsMap map[string]*PlayerStats
+	gamePlayers := append(g.Teams.Home.Players, g.Teams.Away.Players...)
+	for _, p := range gamePlayers {
+		statsMap[p.PinId.Pin] = &PlayerStats{
+			stats: map[string]int{
+				"pts": 0,
+				"reb": 0,
+				"ast": 0,
+			},
+			mu: sync.Mutex{},
+		}
+	}
+
+	return &GameHub{
+		AllowedKeepers: allowedKeepers,
+		Stats:          &GameInProgress{stats: statsMap},
+		keepers:        make(map[*Keeper]bool),
+		watchers:       make(map[*Watcher]bool),
+		Events:         make(chan []byte),
+		JoinWatcher:    make(chan *Watcher),
+		JoinKeeper:     make(chan *Keeper),
+	}
 }
 
 func (h *GameHub) Run() {
