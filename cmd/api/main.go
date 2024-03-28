@@ -134,6 +134,13 @@ func main() {
 			cfg.smtp.sender),
 	}
 
+	go func() {
+		for {
+			fmt.Printf("%+v\n", app.gamesInProgress)
+			time.Sleep(3 * time.Second)
+		}
+	}()
+
 	err = app.serve()
 	if err != nil {
 		logger.PrintFatal(err, nil)

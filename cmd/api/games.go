@@ -214,7 +214,7 @@ var upgrader = websocket.Upgrader{
 
 func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	//userID := app.contextGetUser(r).ID
-	//pin := strings.ToLower(chi.URLParam(r, "id"))
+	pin := strings.ToLower(chi.URLParam(r, "id"))
 
 	// Get game from db and send
 	// create game stat object and hub
@@ -222,41 +222,47 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	// Update game stat in hub
 	// Send updates to all clients
 	// Send event to DB concurrently
-	game, err := app.models.Games.Start(7, "tx38l6", app.gamesInProgress)
+	_, err := app.models.Games.Start(7, pin, app.gamesInProgress)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
 	}
-
-	err = conn.WriteJSON(game)
-
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
-			}
-			break
-		}
-		app.gamesInProgress["tx38l6"].Events <- message
+	conn.SetCloseHandler(func(code int, text string) error {
+		app.models.Games.End(pin, app.gamesInProgress)
+		return nil
+	})
+	keeper := data.Keeper{
+		Hub:    app.gamesInProgress[pin],
+		Conn:   conn,
+		UserID: 7,
 	}
+	keeper.Hub.JoinKeeper <- &keeper
+	go keeper.ReadEvents()
 }
 
 func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
 	//userID := app.contextGetUser(r).ID
-	//pin := strings.ToLower(chi.URLParam(r, "id"))
+	pin := strings.ToLower(chi.URLParam(r, "id"))
+
+	hub, ok := app.gamesInProgress[pin]
+	if !ok {
+		app.notFoundResponse(w, r)
+		return
+	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-
-	select {
-	case message := <-app.gamesInProgress["tx38l6"].Events:
-		conn.WriteJSON(string(message))
+	watcher := data.Watcher{
+		Hub:     hub,
+		Conn:    conn,
+		Receive: make(chan *data.GameEvent),
+		Close:   make(chan error),
 	}
-
+	watcher.Hub.JoinWatcher <- &watcher
+	go watcher.WriteEvents()
 }
