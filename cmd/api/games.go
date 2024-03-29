@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
-	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -222,12 +221,11 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	// Update game stat in hub
 	// Send updates to all clients
 	// Send event to DB concurrently
-	_, err := app.models.Games.Start(7, pin, app.gamesInProgress)
+	hub, err := app.models.Games.Start(7, pin, app.gamesInProgress)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		app.serverErrorResponse(w, r, err)
-		return
+		hub.Errors <- err
 	}
 	conn.SetCloseHandler(func(code int, text string) error {
 		app.models.Games.End(pin, app.gamesInProgress)
@@ -240,6 +238,7 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	}
 	keeper.Hub.JoinKeeper <- &keeper
 	go keeper.ReadEvents()
+	go keeper.WriteEvents()
 }
 
 func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +253,7 @@ func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		hub.Errors <- err
 		return
 	}
 	watcher := data.Watcher{

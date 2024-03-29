@@ -7,19 +7,6 @@ import (
 	"sync"
 )
 
-var (
-	PlayerPoints = PlayerGetterStat{
-		statSrc: nil,
-		getFunc: func(src *PlayerStats) int {
-			var points int
-			points += src.Ftm
-			points += src.TwoPointers * 2
-			points += src.ThreePointers * 3
-			return points
-		},
-	}
-)
-
 type GameInProgress struct {
 	playerStats map[string]*PlayerStats
 }
@@ -124,6 +111,14 @@ func (h *GameHub) Run() {
 		case event := <-h.Events:
 			fmt.Printf("event from hub: %v", event)
 			event.execute(h)
+		case err := <-h.Errors:
+			fmt.Printf("\nHUB ERROR: %s\n", err.Error())
+			for k := range h.keepers {
+				k.Close <- err
+			}
+			for w := range h.watchers {
+				w.Close <- err
+			}
 		}
 	}
 }

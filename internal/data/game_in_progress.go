@@ -14,9 +14,36 @@ type Keeper struct {
 	Hub    *GameHub
 	Conn   *websocket.Conn
 	UserID int64
+	Close  chan error
 }
 
 // TODO return close error on game hub and close connections and goroutines when closed
+func (k *Keeper) WriteEvents() {
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		k.Hub.LeaveKeeper <- k
+		k.Conn.Close()
+	}()
+	for {
+		select {
+		case <-ticker.C:
+			k.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := k.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		case closeErr := <-k.Close:
+			closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, closeErr.Error())
+			writer, err := k.Conn.NextWriter(websocket.CloseMessage)
+			if err != nil {
+				return
+			}
+			writer.Write(closeMessage)
+			writer.Close()
+			return
+		}
+	}
+}
 
 func (k *Keeper) ReadEvents() {
 	defer func() {
@@ -34,23 +61,20 @@ func (k *Keeper) ReadEvents() {
 		var genericEvent GenericEvent
 		_, bytes, err := k.Conn.ReadMessage()
 		if err != nil {
-			fmt.Printf("err on event read\n")
+			k.Hub.Errors <- err
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
 			break
 		}
-		fmt.Printf("bytes: %s\n", string(bytes))
 		err = json2.Unmarshal(bytes, &genericEvent)
 		if err != nil {
-			fmt.Printf("err on event unmarshal\n")
+			k.Hub.Errors <- err
 		}
-		fmt.Printf("event: %v\n", genericEvent)
 		event, err := genericEvent.parseEvent()
 		if err != nil {
-			fmt.Printf("err on event parse\n")
+			k.Hub.Errors <- err
 		}
-		fmt.Printf("event from readEvent: %v\n", event)
 		k.Hub.Events <- event
 	}
 }
@@ -60,7 +84,7 @@ const (
 	writeWait = 10 * time.Second
 
 	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
+	pongWait = 1 * time.Minute
 
 	// Send pings to peer with this period. Must be less than pongWait.
 	pingPeriod = (pongWait * 9) / 10
@@ -135,7 +159,7 @@ func (w *Watcher) WriteEvents() {
 }
 
 func (m *GameModel) Start(userID int64, gamePin string, gamesInProgress map[string]*GameHub) (
-	*Game, error) {
+	*GameHub, error) {
 	game, err := m.Get(userID, gamePin)
 	if err != nil {
 		switch {
@@ -148,8 +172,10 @@ func (m *GameModel) Start(userID int64, gamePin string, gamesInProgress map[stri
 	go hub.Run()
 	gamesInProgress[gamePin] = hub
 
-	return game, nil
+	return hub, nil
 }
+
+// TODO fix game cleanup
 
 func (m *GameModel) End(gamePin string, gamesInProgress map[string]*GameHub) {
 	game, ok := gamesInProgress[gamePin]
