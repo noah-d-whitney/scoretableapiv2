@@ -77,7 +77,7 @@ var (
 type Watcher struct {
 	Hub     *GameHub
 	Conn    *websocket.Conn
-	Receive chan GameEvent
+	Receive chan []byte
 	Close   chan error
 }
 
@@ -90,9 +90,9 @@ func (w *Watcher) WriteEvents() {
 	}()
 	for {
 		select {
-		case event, ok := <-w.Receive:
+		case message, ok := <-w.Receive:
 
-			fmt.Printf("event from writeEvent: %v", event)
+			fmt.Printf("event from writeEvent: %v", message)
 			w.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				// The hub closed the channel.
@@ -104,21 +104,13 @@ func (w *Watcher) WriteEvents() {
 			if err != nil {
 				return
 			}
-			jsonEvent, err := json2.Marshal(event)
-			if err != nil {
-				return
-			}
-			writer.Write(jsonEvent)
+			writer.Write(message)
 
 			// Add queued chat messages to the current websocket message.
 			n := len(w.Receive)
 			for i := 0; i < n; i++ {
 				writer.Write(newline)
-				jsonEvent, err := json2.Marshal(<-w.Receive)
-				if err != nil {
-					return
-				}
-				writer.Write(jsonEvent)
+				writer.Write(<-w.Receive)
 			}
 
 			if err := writer.Close(); err != nil {

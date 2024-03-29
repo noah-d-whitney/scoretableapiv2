@@ -3,7 +3,21 @@ package data
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"sync"
+)
+
+var (
+	PlayerPoints = PlayerGetterStat{
+		statSrc: nil,
+		getFunc: func(src *PlayerStats) int {
+			var points int
+			points += src.Ftm
+			points += src.TwoPointers * 2
+			points += src.ThreePointers * 3
+			return points
+		},
+	}
 )
 
 type GameInProgress struct {
@@ -11,8 +25,38 @@ type GameInProgress struct {
 }
 
 type PlayerStats struct {
-	stats map[string]int
-	mu    sync.Mutex
+	Points        *PlayerGetterStat `json:"pts"`
+	ThreePointers int               `json:"3ptm"`
+	TwoPointers   int               `json:"2pta"`
+	Ftm           int               `json:"ftm"`
+	Stats         map[string]int    `json:"-"`
+	mu            sync.Mutex
+}
+
+type PlayerGetterStat struct {
+	statSrc *PlayerStats
+	getFunc func(statSrc *PlayerStats) int
+}
+
+func (pgs PlayerGetterStat) get() int {
+	return pgs.getFunc(pgs.statSrc)
+}
+
+func (pgs PlayerGetterStat) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Itoa(pgs.get())), nil
+}
+
+func newPointsGetter(src *PlayerStats) *PlayerGetterStat {
+	return &PlayerGetterStat{
+		statSrc: src,
+		getFunc: func(src *PlayerStats) int {
+			var points int
+			points += src.Ftm
+			points += src.TwoPointers * 2
+			points += src.ThreePointers * 3
+			return points
+		},
+	}
 }
 
 type GameHub struct {
@@ -34,14 +78,15 @@ func NewGameHub(g *Game) *GameHub {
 	statsMap := make(map[string]*PlayerStats)
 	gamePlayers := append(g.Teams.Home.Players, g.Teams.Away.Players...)
 	for _, p := range gamePlayers {
-		statsMap[p.PinId.Pin] = &PlayerStats{
-			stats: map[string]int{
-				"pts": 0,
-				"reb": 0,
-				"ast": 0,
-			},
-			mu: sync.Mutex{},
+		playerStats := &PlayerStats{
+			ThreePointers: 0,
+			TwoPointers:   0,
+			Ftm:           0,
+			Stats:         nil,
+			mu:            sync.Mutex{},
 		}
+		playerStats.Points = newPointsGetter(playerStats)
+		statsMap[p.PinId.Pin] = playerStats
 	}
 
 	return &GameHub{
@@ -78,11 +123,7 @@ func (h *GameHub) Run() {
 			}
 		case event := <-h.Events:
 			fmt.Printf("event from hub: %v", event)
-			event.Execute(h)
+			event.execute(h)
 		}
 	}
-}
-
-func (h *GameHub) handleEvent(e *GameEvent) (map[string]int, error) {
-	return nil, nil
 }

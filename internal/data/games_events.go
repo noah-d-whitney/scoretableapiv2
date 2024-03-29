@@ -1,6 +1,7 @@
 package data
 
 import (
+	json2 "encoding/json"
 	"errors"
 	"fmt"
 )
@@ -11,7 +12,7 @@ var (
 )
 
 type GameEvent interface {
-	Execute(hub *GameHub)
+	execute(hub *GameHub)
 }
 
 type GameEventType int
@@ -94,22 +95,37 @@ func (e GameScoreEvent) validate() error {
 	return nil
 }
 
-func (e GameScoreEvent) Execute(h *GameHub) {
+func (e GameScoreEvent) generateClientMessage(h *GameHub) ([]byte, error) {
+	bytes, err := json2.Marshal(h.GameInProgress.playerStats[e.PlayerPin])
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("\nOUTPUT: %s\n", string(bytes))
+
+	return bytes, nil
+}
+
+func (e GameScoreEvent) execute(h *GameHub) {
 	statCol := h.GameInProgress.playerStats[e.PlayerPin]
 	statCol.mu.Lock()
 	switch e.Action {
 	case foul_shot:
-		statCol.stats["pts"] += 1
+		statCol.Ftm += 1
 	case two_pointer:
-		statCol.stats["pts"] += 2
+		statCol.TwoPointers += 1
 	case three_pointer:
-		statCol.stats["pts"] += 3
+		statCol.ThreePointers += 1
 	}
 	statCol.mu.Unlock()
 
+	message, err := e.generateClientMessage(h)
+	if err != nil {
+		return
+	}
+
 	for watcher := range h.watchers {
 		select {
-		case watcher.Receive <- e:
+		case watcher.Receive <- message:
 		default:
 			close(watcher.Receive)
 			delete(h.watchers, watcher)
@@ -131,6 +147,6 @@ const (
 	loose_ball
 )
 
-func (e GameFoulEvent) Execute(h *GameHub) {
+func (e GameFoulEvent) execute(h *GameHub) {
 	return
 }
