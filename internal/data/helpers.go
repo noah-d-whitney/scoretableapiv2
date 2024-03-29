@@ -2,6 +2,7 @@ package data
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -41,18 +42,47 @@ type keysWithTypes struct {
 var ErrNoValueForKey = errors.New("no value found for key")
 var ErrValueNotAsserted = errors.New("value could not be asserted to specified type")
 
-func checkAndAssertFromMap[T any](src map[string]any, key string, dest T) error {
+func checkAndAssertStringFromMap(src map[string]any, key string) (string, error) {
 	data, ok := src[key]
 	if !ok {
-		return ErrNoValueForKey
+		return "", ErrNoValueForKey
 	}
-
-	value, ok := data.(T)
+	value, ok := data.(string)
 	if !ok {
-		return ErrValueNotAsserted
+		return "", ErrValueNotAsserted
 	}
 
-	dest = value
+	return value, nil
+}
 
-	return nil
+func checkAndAssertIntFromMap(src map[string]any, key string) (int, error) {
+	data, ok := src[key]
+	if !ok {
+		return 0, ErrNoValueForKey
+	}
+	fmt.Printf("data value: %v\n", data)
+
+	value, ok := data.(float64)
+	if !ok {
+		return 0, ErrValueNotAsserted
+	}
+
+	return int(value), nil
+
+}
+
+func checkAndAssertBoolFromMap(src map[string]any, key string) (bool, error) {
+	data, ok := src[key]
+	if !ok {
+		return false, ErrNoValueForKey
+	}
+	fmt.Printf("data value: %v\n", data)
+
+	value, ok := data.(bool)
+	if !ok {
+		return false, ErrValueNotAsserted
+	}
+
+	return value, nil
+
 }
