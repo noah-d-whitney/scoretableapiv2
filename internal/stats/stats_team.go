@@ -24,46 +24,12 @@ func (ts TeamStat) getReq() []Stat {
 	return req
 }
 
-var (
-	TeamPoints = TeamStat{
-		name: "Pts",
-		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
-			var points int
-			for _, sl := range teamPlayersStats {
-				points += sl.get(PlayerPoints).(int)
-			}
-			return points
-		},
-		req: []PlayerStat{PlayerPoints},
-	}
-	TeamFieldGoalsAttempted = TeamStat{
-		name: "FGA",
-		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
-			var fga int
-			for _, sl := range teamPlayersStats {
-				fga += sl.get(PlayerFieldGoalsAttempted).(int)
-			}
-			return fga
-		},
-		req: []PlayerStat{PlayerFieldGoalsAttempted},
-	}
-	TeamFieldGoalsMade = TeamStat{
-		name: "FGM",
-		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
-			var fgm int
-			for _, sl := range teamPlayersStats {
-				fgm += sl.get(PlayerFieldGoalsMade).(int)
-			}
-			return fgm
-		},
-		req: []PlayerStat{PlayerFieldGoalsMade},
-	}
-)
-
 type TeamStatline struct {
 	stats       map[string]TeamStat
 	playerStats TeamPlayersStatline
 }
+
+func (ps *TeamStatline) getFuncAllPlayers
 
 func (ps *TeamStatline) get(stat TeamStat) any {
 	teamStat := ps.stats[stat.name]

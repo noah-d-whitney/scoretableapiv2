@@ -5,27 +5,12 @@ import "sync"
 // PrimitiveStat is a string type to define keys of map in PrimitiveStatline
 type PrimitiveStat string
 
-const (
-	ThreePointMiss   PrimitiveStat = "3PtA"
-	ThreePointMade   PrimitiveStat = "3PtM"
-	TwoPointMiss     PrimitiveStat = "2PtA"
-	TwoPointMade     PrimitiveStat = "2PtM"
-	FreeThrowMiss    PrimitiveStat = "FTA"
-	FreeThrowMade    PrimitiveStat = "FTM"
-	Assist           PrimitiveStat = "Ast"
-	Blocks           PrimitiveStat = "Blk"
-	Steals           PrimitiveStat = "Stl"
-	OffensiveRebound PrimitiveStat = "OReb"
-	DefensiveRebound PrimitiveStat = "DReb"
-	Turnover         PrimitiveStat = "To"
-	PersonalFoul     PrimitiveStat = "PF"
-)
-
 // PrimitiveStatline holds a map with keys of type PrimitiveStat and value of type int. Int value
 // holds current value of stat.
 type PrimitiveStatline struct {
-	stats map[PrimitiveStat]int
-	mu    sync.Mutex
+	stats map[PrimitiveStat]int // DO NOT access stats map directly. Instead,
+	// use get on PrimitiveStatline
+	mu sync.Mutex
 }
 
 // get(): gets int value for key PrimitiveStat

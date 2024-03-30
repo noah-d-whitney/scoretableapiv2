@@ -20,37 +20,6 @@ type GameStat struct {
 	req     []TeamStat
 }
 
-var (
-	GamePoints = GameStat{
-		name: "Pts",
-		getFunc: func(gameTeamsStats GameTeamsStatline) any {
-			var points int
-			points += gameTeamsStats.home.get(TeamPoints).(int)
-			points += gameTeamsStats.away.get(TeamPoints).(int)
-			return points
-		},
-		req: []TeamStat{TeamPoints},
-	}
-	GameFieldGoalsAttempted = GameStat{
-		name: "FGA",
-		getFunc: func(gameTeamsStats GameTeamsStatline) any {
-			var fga int
-			fga += gameTeamsStats.home.get(TeamFieldGoalsAttempted).(int)
-			return fga
-		},
-		req: []TeamStat{TeamFieldGoalsAttempted},
-	}
-	GameFieldGoalsMade = GameStat{
-		name: "FGM",
-		getFunc: func(gameTeamsStats GameTeamsStatline) any {
-			var fgm int
-			fgm += gameTeamsStats.home.get(TeamFieldGoalsMade).(int)
-			return fgm
-		},
-		req: []TeamStat{TeamFieldGoalsMade},
-	}
-)
-
 func (gs GameStat) getReq() []Stat {
 	req := make([]Stat, 0)
 	for _, r := range gs.req {
@@ -196,7 +165,7 @@ type CleanGameStatline struct {
 }
 type CleanStatline map[string]any
 
-func main() {
+func TEST() {
 	gameStats := []GameStat{GamePoints, GameFieldGoalsMade, GameFieldGoalsAttempted}
 	homePins := []string{"noah", "aaron", "jesse"}
 	awayPins := []string{"waylon", "felixx", "lexie"}
