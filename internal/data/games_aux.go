@@ -1,6 +1,7 @@
 package data
 
 import (
+	"ScoreTableApi/internal/stats"
 	"context"
 	"database/sql"
 	"errors"
@@ -50,7 +51,7 @@ func getGameTeams(game *Game, tx *sql.Tx, ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if team.Side == TeamHome {
+		if team.Side == stats.TeamHome {
 			game.Teams.Home = &team
 		}
 		if team.Side == TeamAway {

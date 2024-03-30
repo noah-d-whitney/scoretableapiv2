@@ -12,39 +12,73 @@ type GameInProgress struct {
 }
 
 type PlayerStats struct {
-	Points        *PlayerGetterStat `json:"pts"`
-	ThreePointers int               `json:"3ptm"`
-	TwoPointers   int               `json:"2pta"`
-	Ftm           int               `json:"ftm"`
-	Stats         map[string]int    `json:"-"`
-	mu            sync.Mutex
+	Pts     PlayerGetterStat `json:"pts"`
+	FgPer   PlayerGetterStat `json:"fg%"`
+	ThPtPer PlayerGetterStat `json:"3pt%"`
+	FtPer   PlayerGetterStat `json:"ft%"`
+	ThPtA   int              `json:"3pta"`
+	ThPtM   int              `json:"3ptm"`
+	TwPtA   int              `json:"2pta"`
+	TwPtM   int              `json:"2ptm"`
+	FtA     int              `json:"fta"`
+	FtM     int              `json:"ftm"`
+	mu      sync.Mutex
 }
 
-type PlayerGetterStat struct {
-	statSrc *PlayerStats
-	getFunc func(statSrc *PlayerStats) int
+func NewPlayerStats() *PlayerStats {
+	stats := &PlayerStats{
+		FgPer:   nil,
+		ThPtPer: nil,
+		FtPer:   nil,
+		ThPtA:   0,
+		ThPtM:   0,
+		TwPtA:   0,
+		TwPtM:   0,
+		FtA:     0,
+		FtM:     0,
+		mu:      sync.Mutex{},
+	}
+
+	stats.Pts = newPointsGetter(stats)
 }
 
-func (pgs PlayerGetterStat) get() int {
-	return pgs.getFunc(pgs.statSrc)
+type PlayerGetterStat interface {
+	get() interface{}
+	MarshalJSON() ([]byte, error)
 }
 
-func (pgs PlayerGetterStat) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Itoa(pgs.get())), nil
+type PlayerPointsGetter struct {
+	src *PlayerStats
 }
 
-func newPointsGetter(src *PlayerStats) *PlayerGetterStat {
-	return &PlayerGetterStat{
-		statSrc: src,
-		getFunc: func(src *PlayerStats) int {
-			var points int
-			points += src.Ftm
-			points += src.TwoPointers * 2
-			points += src.ThreePointers * 3
-			return points
-		},
+func (ppg *PlayerPointsGetter) get() any {
+	var points int
+	points += ppg.src.FtM
+	points += ppg.src.TwPtM * 2
+	points += ppg.src.ThPtM * 3
+	return points
+}
+
+func (ppg *PlayerPointsGetter) MarshalJSON() ([]byte, error) {
+	value := ppg.get().(int)
+	return []byte(strconv.Itoa(value)), nil
+}
+
+func newPointsGetter(src *PlayerStats) *PlayerPointsGetter {
+	return &PlayerPointsGetter{
+		src: src,
 	}
 }
+
+//func newThPtPerGetter(src *PlayerStats) *PlayerGetterStat {
+//	return &PlayerGetterStat{
+//		statSrc: src,
+//		getFunc: func(src *PlayerStats) any {
+//			percent := float64(src.ThPtA)/float64(src.ThPtM)
+//			return percent
+//		},
+//	}
+//}
 
 type GameHub struct {
 	AllowedKeepers []int64
@@ -72,7 +106,7 @@ func NewGameHub(g *Game) *GameHub {
 			Stats:         nil,
 			mu:            sync.Mutex{},
 		}
-		playerStats.Points = newPointsGetter(playerStats)
+		playerStats.Pts = newPointsGetter(playerStats)
 		statsMap[p.PinId.Pin] = playerStats
 	}
 

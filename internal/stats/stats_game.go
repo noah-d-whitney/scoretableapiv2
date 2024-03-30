@@ -1,0 +1,218 @@
+package stats
+
+import (
+	json2 "encoding/json"
+	"fmt"
+)
+
+type Stat interface {
+	getReq() []Stat
+}
+
+type GameTeamsStatline struct {
+	home TeamStatline
+	away TeamStatline
+}
+
+type GameStat struct {
+	name    string
+	getFunc func(gameTeamsStats GameTeamsStatline) any
+	req     []TeamStat
+}
+
+var (
+	GamePoints = GameStat{
+		name: "Pts",
+		getFunc: func(gameTeamsStats GameTeamsStatline) any {
+			var points int
+			points += gameTeamsStats.home.get(TeamPoints).(int)
+			points += gameTeamsStats.away.get(TeamPoints).(int)
+			return points
+		},
+		req: []TeamStat{TeamPoints},
+	}
+	GameFieldGoalsAttempted = GameStat{
+		name: "FGA",
+		getFunc: func(gameTeamsStats GameTeamsStatline) any {
+			var fga int
+			fga += gameTeamsStats.home.get(TeamFieldGoalsAttempted).(int)
+			return fga
+		},
+		req: []TeamStat{TeamFieldGoalsAttempted},
+	}
+	GameFieldGoalsMade = GameStat{
+		name: "FGM",
+		getFunc: func(gameTeamsStats GameTeamsStatline) any {
+			var fgm int
+			fgm += gameTeamsStats.home.get(TeamFieldGoalsMade).(int)
+			return fgm
+		},
+		req: []TeamStat{TeamFieldGoalsMade},
+	}
+)
+
+func (gs GameStat) getReq() []Stat {
+	req := make([]Stat, 0)
+	for _, r := range gs.req {
+		req = append(req, r)
+	}
+	return req
+}
+
+type GameTeamSide int
+
+const (
+	TeamHome GameTeamSide = iota
+	TeamAway
+)
+
+type GameStatline struct {
+	stats       map[string]GameStat
+	teamStats   GameTeamsStatline
+	playerStats map[string]*PlayerStatline
+}
+
+func (gsl *GameStatline) Add(playerPin string, stat PrimitiveStat, add int) int {
+	statline := gsl.playerStats[playerPin]
+	newValue := statline.primStats.set(stat, add)
+	return newValue
+}
+
+func (gsl *GameStatline) GetGameStat(stat GameStat) any {
+	gameStat := gsl.stats[stat.name]
+	return gameStat.getFunc(gsl.teamStats)
+}
+
+func (gsl *GameStatline) getAll() map[string]any {
+	statline := make(map[string]any)
+	for n, s := range gsl.stats {
+		statline[n] = s.getFunc(gsl.teamStats)
+	}
+	return statline
+}
+
+func (gsl *GameStatline) GetTeamStat(stat TeamStat, side GameTeamSide) any {
+	var teamStatline TeamStatline
+	switch side {
+	case TeamHome:
+		teamStatline = gsl.teamStats.home
+	case TeamAway:
+		teamStatline = gsl.teamStats.away
+	}
+
+	return teamStatline.get(stat)
+}
+
+func (gsl *GameStatline) GetCleanStatline() CleanGameStatline {
+	cleanStatline := CleanGameStatline{}
+	cleanStatline.GameStats = gsl.getAll()
+	cleanStatline.Teams.Home.TeamStats = gsl.teamStats.home.getAll()
+	cleanStatline.Teams.Away.TeamStats = gsl.teamStats.away.getAll()
+
+	homePlayerStats := make(map[string]CleanStatline)
+	for p, s := range gsl.teamStats.home.playerStats {
+		homePlayerStats[p] = s.getAll()
+	}
+	cleanStatline.Teams.Home.PlayerStats = homePlayerStats
+
+	awayPlayerStats := make(map[string]CleanStatline)
+	for p, s := range gsl.teamStats.away.playerStats {
+		awayPlayerStats[p] = s.getAll()
+	}
+	cleanStatline.Teams.Away.PlayerStats = awayPlayerStats
+
+	return cleanStatline
+}
+
+func (gsl *GameStatline) GetPlayerStat(stat PlayerStat, playerPin string) any {
+	playerStat := gsl.playerStats[playerPin]
+	return playerStat.get(stat)
+}
+
+//
+//func (gsl *GameStatline) getAllowedStats(stats []Stat) []Stat {
+//	allowedStats := make([]Stat, 0)
+//	for _, s := range stats {
+//		allowedStats = append(allowedStats, s)
+//		if len(s.getReq()) != 0 {
+//			return gsl.getAllowedStats(s.getReq())
+//		}
+//	}
+//
+//	return allowedStats
+//}
+
+func newGameStatline(homePlayerPins, awayPlayerPins []string, gameStats []GameStat) *GameStatline {
+	statline := GameStatline{
+		stats: make(map[string]GameStat),
+	}
+
+	// add each stat's requirements to map and assign to stats map
+	teamStatsReq := make(map[string]TeamStat)
+	for _, s := range gameStats {
+		for _, req := range s.req {
+			teamStatsReq[req.name] = req
+		}
+		statline.stats[s.name] = s
+	}
+
+	teamStatsReqSl := make([]TeamStat, 0)
+	for _, req := range teamStatsReq {
+		teamStatsReqSl = append(teamStatsReqSl, req)
+	}
+
+	// create team statlines with each slice of player ids
+	gameTeamsStatline := GameTeamsStatline{
+		home: newTeamStatline(homePlayerPins, teamStatsReqSl),
+		away: newTeamStatline(awayPlayerPins, teamStatsReqSl),
+	}
+	statline.teamStats = gameTeamsStatline
+
+	// create map of player pins and pointers to their respective player statlines
+	primStats := make(map[string]*PlayerStatline)
+	for p, s := range gameTeamsStatline.home.playerStats {
+		primStats[p] = &s
+	}
+	for p, s := range gameTeamsStatline.away.playerStats {
+		primStats[p] = &s
+	}
+	statline.playerStats = primStats
+
+	return &statline
+}
+
+type CleanGameStatline struct {
+	GameStats CleanStatline `json:"game_stats"`
+	Teams     struct {
+		Home struct {
+			TeamStats   CleanStatline            `json:"team_stats"`
+			PlayerStats map[string]CleanStatline `json:"player_stats"`
+		} `json:"home"`
+		Away struct {
+			TeamStats   CleanStatline            `json:"team_stats"`
+			PlayerStats map[string]CleanStatline `json:"player_stats"`
+		} `json:"away"`
+	} `json:"teams"`
+}
+type CleanStatline map[string]any
+
+func main() {
+	gameStats := []GameStat{GamePoints, GameFieldGoalsMade, GameFieldGoalsAttempted}
+	homePins := []string{"noah", "aaron", "jesse"}
+	awayPins := []string{"waylon", "felixx", "lexie"}
+	gsl := newGameStatline(homePins, awayPins, gameStats)
+
+	json, _ := json2.MarshalIndent(gsl.GetCleanStatline(), "", "\t")
+	statline := string(json)
+	fmt.Printf("Start: %s\n", statline)
+
+	gsl.Add("noah", ThreePointMade, 1)
+	gsl.Add("noah", ThreePointMiss, 1)
+	gsl.Add("noah", ThreePointMade, 1)
+	gsl.Add("waylon", TwoPointMade, 1)
+	gsl.Add("lexie", ThreePointMade, 1)
+
+	json, _ = json2.MarshalIndent(gsl.GetCleanStatline(), "", "\t")
+	statline = string(json)
+	fmt.Printf("AFTER: %s\n", statline)
+}
