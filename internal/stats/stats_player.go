@@ -28,7 +28,7 @@ func (ps *PlayerStatline) getAll() map[string]any {
 	return statline
 }
 
-func newPlayerStatline(playerStats []PlayerStat) PlayerStatline {
+func newPlayerStatline(playerStats []PlayerStat) (PlayerStatline, error) {
 	statline := PlayerStatline{
 		stats: make(map[string]PlayerStat),
 	}
@@ -36,6 +36,10 @@ func newPlayerStatline(playerStats []PlayerStat) PlayerStatline {
 	primReq := make(map[PrimitiveStat]bool)
 	for _, s := range playerStats {
 		for _, req := range s.req {
+			_, exists := primReq[req]
+			if exists {
+				return PlayerStatline{}, ErrDuplicateStatKeys
+			}
 			primReq[req] = true
 		}
 		statline.stats[s.name] = s
@@ -47,5 +51,5 @@ func newPlayerStatline(playerStats []PlayerStat) PlayerStatline {
 	}
 
 	statline.primStats = newPrimitiveStatline(primReqSl)
-	return statline
+	return statline, nil
 }

@@ -41,21 +41,21 @@ var (
 		},
 		req: []PrimitiveStat{FreeThrowMade, TwoPointMade, ThreePointMade},
 	}
-	playerPointsSimple = PlayerStat{
+	playerPointSimple = PlayerStat{
 		name: "Pts",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(PointSimple)
 		},
 		req: []PrimitiveStat{PointSimple},
 	}
-	playerTwoPointsAttempted = PlayerStat{
+	playerTwoPointAttempted = PlayerStat{
 		name: "2PtA",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(TwoPointMiss) + primStats.get(TwoPointMade)
 		},
 		req: []PrimitiveStat{TwoPointMiss, TwoPointMade},
 	}
-	playerTwoPointsMade = PlayerStat{
+	playerTwoPointMade = PlayerStat{
 		name: "2PtM",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(TwoPointMade)
@@ -71,14 +71,14 @@ var (
 		},
 		req: []PrimitiveStat{TwoPointMade, TwoPointMiss},
 	}
-	playerThreePointsAttempted = PlayerStat{
+	playerThreePointAttempted = PlayerStat{
 		name: "3PtA",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(ThreePointMiss) + primStats.get(ThreePointMade)
 		},
 		req: []PrimitiveStat{ThreePointMiss, ThreePointMade},
 	}
-	playerThreePointsMade = PlayerStat{
+	playerThreePointMade = PlayerStat{
 		name: "3PtM",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(ThreePointMade)
@@ -119,7 +119,7 @@ var (
 		},
 		req: []PrimitiveStat{FreeThrowMade, FreeThrowMiss},
 	}
-	playerFieldGoalsAttempted = PlayerStat{
+	playerFieldGoalAttempted = PlayerStat{
 		name: "FGA",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			var fga int
@@ -131,7 +131,7 @@ var (
 		},
 		req: []PrimitiveStat{TwoPointMiss, TwoPointMade, ThreePointMiss, ThreePointMade},
 	}
-	playerFieldGoalsMade = PlayerStat{
+	playerFieldGoalMade = PlayerStat{
 		name: "FGM",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			var fgm int
@@ -158,63 +158,63 @@ var (
 		},
 		req: []PrimitiveStat{TwoPointMiss, TwoPointMade, ThreePointMiss, ThreePointMade},
 	}
-	playerDefensiveRebounds = PlayerStat{
+	playerDefensiveRebound = PlayerStat{
 		name: "DRebs",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(DefensiveRebound)
 		},
 		req: []PrimitiveStat{DefensiveRebound},
 	}
-	playerOffensiveRebounds = PlayerStat{
+	playerOffensiveRebound = PlayerStat{
 		name: "ORebs",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(OffensiveRebound)
 		},
 		req: []PrimitiveStat{OffensiveRebound},
 	}
-	playerRebounds = PlayerStat{
+	playerRebound = PlayerStat{
 		name: "Rebs",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(OffensiveRebound) + primStats.get(DefensiveRebound)
 		},
 		req: []PrimitiveStat{OffensiveRebound, DefensiveRebound},
 	}
-	playerReboundsSimple = PlayerStat{
+	playerReboundSimple = PlayerStat{
 		name: "Rebs",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(ReboundSimple)
 		},
 		req: []PrimitiveStat{ReboundSimple},
 	}
-	playerAssists = PlayerStat{
+	playerAssist = PlayerStat{
 		name: "Ast",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(Assist)
 		},
 		req: []PrimitiveStat{Assist},
 	}
-	playerSteals = PlayerStat{
+	playerSteal = PlayerStat{
 		name: "Stl",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(Steal)
 		},
 		req: []PrimitiveStat{Steal},
 	}
-	playerBlocks = PlayerStat{
+	playerBlock = PlayerStat{
 		name: "Blk",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(Block)
 		},
 		req: []PrimitiveStat{Block},
 	}
-	playerTurnovers = PlayerStat{
+	playerTurnover = PlayerStat{
 		name: "To",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(Turnover)
 		},
 		req: []PrimitiveStat{Turnover},
 	}
-	playerFoulsSimple = PlayerStat{
+	playerFoulSimple = PlayerStat{
 		name: "Fls",
 		getFunc: func(primStats *PrimitiveStatline) any {
 			return primStats.get(FoulSimple)
@@ -241,79 +241,79 @@ var (
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var points int
 			for _, sl := range teamPlayersStats {
-				points += sl.get(playerPointsSimple).(int)
+				points += sl.get(playerPointSimple).(int)
 			}
 			return points
 		},
-		req: []PlayerStat{playerPointsSimple},
+		req: []PlayerStat{playerPointSimple},
 	}
 	teamTwoPointAttempted = TeamStat{
 		name: "2PtA",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var twoAttempt int
 			for _, sl := range teamPlayersStats {
-				twoAttempt += sl.get(playerTwoPointsAttempted).(int)
+				twoAttempt += sl.get(playerTwoPointAttempted).(int)
 			}
 			return twoAttempt
 		},
-		req: []PlayerStat{playerTwoPointsAttempted},
+		req: []PlayerStat{playerTwoPointAttempted},
 	}
 	teamTwoPointMade = TeamStat{
 		name: "2PtM",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var count int
 			for _, sl := range teamPlayersStats {
-				count += sl.get(playerTwoPointsMade).(int)
+				count += sl.get(playerTwoPointMade).(int)
 			}
 			return count
 		},
-		req: []PlayerStat{playerTwoPointsMade},
+		req: []PlayerStat{playerTwoPointMade},
 	}
 	teamTwoPointPercent = TeamStat{
 		name: "2Pt%",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var attp, made int
 			for _, sl := range teamPlayersStats {
-				attp += sl.get(playerTwoPointsAttempted).(int)
-				made += sl.get(playerTwoPointsMade).(int)
+				attp += sl.get(playerTwoPointAttempted).(int)
+				made += sl.get(playerTwoPointMade).(int)
 			}
 			return float64ToPercent(float64(made) / float64(attp))
 		},
-		req: []PlayerStat{playerTwoPointsMade, playerTwoPointsAttempted, playerTwoPointPercent},
+		req: []PlayerStat{playerTwoPointMade, playerTwoPointAttempted, playerTwoPointPercent},
 	}
 	teamThreePointAttempted = TeamStat{
 		name: "3PtA",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var count int
 			for _, sl := range teamPlayersStats {
-				count += sl.get(playerThreePointsAttempted).(int)
+				count += sl.get(playerThreePointAttempted).(int)
 			}
 			return count
 		},
-		req: []PlayerStat{playerThreePointsAttempted},
+		req: []PlayerStat{playerThreePointAttempted},
 	}
 	teamThreePointMade = TeamStat{
 		name: "3PtM",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var count int
 			for _, sl := range teamPlayersStats {
-				count += sl.get(playerThreePointsMade).(int)
+				count += sl.get(playerThreePointMade).(int)
 			}
 			return count
 		},
-		req: []PlayerStat{playerThreePointsMade},
+		req: []PlayerStat{playerThreePointMade},
 	}
 	teamThreePointPercent = TeamStat{
 		name: "3Pt%",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var attp, made int
 			for _, sl := range teamPlayersStats {
-				attp += sl.get(playerThreePointsAttempted).(int)
-				made += sl.get(playerThreePointsMade).(int)
+				attp += sl.get(playerThreePointAttempted).(int)
+				made += sl.get(playerThreePointMade).(int)
 			}
 			return float64ToPercent(float64(made) / float64(attp))
 		},
-		req: []PlayerStat{playerThreePointsMade, playerThreePointsAttempted, playerThreePointPercent},
+		req: []PlayerStat{playerThreePointMade, playerThreePointAttempted, playerThreePointPercent},
 	}
 	teamFreeThrowAttempted = TeamStat{
 		name: "FTA",
@@ -354,34 +354,133 @@ var (
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var fga int
 			for _, sl := range teamPlayersStats {
-				fga += sl.get(playerFieldGoalsAttempted).(int)
+				fga += sl.get(playerFieldGoalAttempted).(int)
 			}
 			return fga
 		},
-		req: []PlayerStat{playerFieldGoalsAttempted},
+		req: []PlayerStat{playerFieldGoalAttempted},
 	}
 	teamFieldGoalMade = TeamStat{
 		name: "FGM",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var fgm int
 			for _, sl := range teamPlayersStats {
-				fgm += sl.get(playerFieldGoalsMade).(int)
+				fgm += sl.get(playerFieldGoalMade).(int)
 			}
 			return fgm
 		},
-		req: []PlayerStat{playerFieldGoalsMade},
+		req: []PlayerStat{playerFieldGoalMade},
 	}
 	teamFieldGoalPercent = TeamStat{
 		name: "FG%",
 		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
 			var attp, made int
 			for _, sl := range teamPlayersStats {
-				attp += sl.get(playerFieldGoalsAttempted).(int)
-				made += sl.get(playerFieldGoalsMade).(int)
+				attp += sl.get(playerFieldGoalAttempted).(int)
+				made += sl.get(playerFieldGoalMade).(int)
 			}
 			return float64ToPercent(float64(made) / float64(attp))
 		},
-		req: []PlayerStat{playerFieldGoalsMade, playerFieldGoalsAttempted, playerFieldGoalPercent},
+		req: []PlayerStat{playerFieldGoalMade, playerFieldGoalAttempted, playerFieldGoalPercent},
+	}
+	teamReboundSimple = TeamStat{
+		name: "Rebs",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var rebs int
+			for _, sl := range teamPlayersStats {
+				rebs += sl.get(playerReboundSimple).(int)
+			}
+			return rebs
+		},
+		req: []PlayerStat{playerReboundSimple},
+	}
+	teamRebound = TeamStat{
+		name: "Rebs",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var rebs int
+			for _, sl := range teamPlayersStats {
+				rebs += sl.get(playerRebound).(int)
+			}
+			return rebs
+		},
+		req: []PlayerStat{playerRebound},
+	}
+	teamOffensiveRebound = TeamStat{
+		name: "ORebs",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var oRebs int
+			for _, sl := range teamPlayersStats {
+				oRebs += sl.get(playerOffensiveRebound).(int)
+			}
+			return oRebs
+		},
+		req: []PlayerStat{playerOffensiveRebound},
+	}
+	teamDefensiveRebound = TeamStat{
+		name: "DRebs",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var dRebs int
+			for _, sl := range teamPlayersStats {
+				dRebs += sl.get(playerDefensiveRebound).(int)
+			}
+			return dRebs
+		},
+		req: []PlayerStat{playerDefensiveRebound},
+	}
+	teamAssist = TeamStat{
+		name: "Ast",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var ast int
+			for _, sl := range teamPlayersStats {
+				ast += sl.get(playerAssist).(int)
+			}
+			return ast
+		},
+		req: []PlayerStat{playerAssist},
+	}
+	teamSteal = TeamStat{
+		name: "Stl",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var stl int
+			for _, sl := range teamPlayersStats {
+				stl += sl.get(playerSteal).(int)
+			}
+			return stl
+		},
+		req: []PlayerStat{playerSteal},
+	}
+	teamBlock = TeamStat{
+		name: "Blk",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var blk int
+			for _, sl := range teamPlayersStats {
+				blk += sl.get(playerBlock).(int)
+			}
+			return blk
+		},
+		req: []PlayerStat{playerBlock},
+	}
+	teamTurnover = TeamStat{
+		name: "To",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var to int
+			for _, sl := range teamPlayersStats {
+				to += sl.get(playerTurnover).(int)
+			}
+			return to
+		},
+		req: []PlayerStat{playerTurnover},
+	}
+	teamFoulSimple = TeamStat{
+		name: "Fls",
+		getFunc: func(teamPlayersStats TeamPlayersStatline) any {
+			var fls int
+			for _, sl := range teamPlayersStats {
+				fls += sl.get(playerFoulSimple).(int)
+			}
+			return fls
+		},
+		req: []PlayerStat{playerFoulSimple},
 	}
 )
 

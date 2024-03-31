@@ -2,12 +2,17 @@ package stats
 
 type TeamPlayersStatline map[string]PlayerStatline
 
-func newTeamPlayersStatline(playerPins []string, playerStats []PlayerStat) TeamPlayersStatline {
+func newTeamPlayersStatline(playerPins []string, playerStats []PlayerStat) (TeamPlayersStatline,
+	error) {
 	teamPlayersStatline := TeamPlayersStatline{}
 	for _, pin := range playerPins {
-		teamPlayersStatline[pin] = newPlayerStatline(playerStats)
+		psl, err := newPlayerStatline(playerStats)
+		if err != nil {
+			return TeamPlayersStatline{}, err
+		}
+		teamPlayersStatline[pin] = psl
 	}
-	return teamPlayersStatline
+	return teamPlayersStatline, nil
 }
 
 type TeamStat struct {
@@ -29,8 +34,6 @@ type TeamStatline struct {
 	playerStats TeamPlayersStatline
 }
 
-func (ps *TeamStatline) getFuncAllPlayers
-
 func (ps *TeamStatline) get(stat TeamStat) any {
 	teamStat := ps.stats[stat.name]
 	return teamStat.getFunc(ps.playerStats)
@@ -43,7 +46,7 @@ func (ps *TeamStatline) getAll() map[string]any {
 	return statline
 }
 
-func newTeamStatline(playerPins []string, teamStats []TeamStat) TeamStatline {
+func newTeamStatline(playerPins []string, teamStats []TeamStat) (TeamStatline, error) {
 	statline := TeamStatline{
 		stats: make(map[string]TeamStat),
 	}
@@ -51,6 +54,10 @@ func newTeamStatline(playerPins []string, teamStats []TeamStat) TeamStatline {
 	playerStatsReq := make(map[string]PlayerStat)
 	for _, s := range teamStats {
 		for _, req := range s.req {
+			_, exists := playerStatsReq[req.name]
+			if exists {
+				return TeamStatline{}, ErrDuplicateStatKeys
+			}
 			playerStatsReq[req.name] = req
 		}
 		statline.stats[s.name] = s
@@ -61,6 +68,10 @@ func newTeamStatline(playerPins []string, teamStats []TeamStat) TeamStatline {
 		playerStatsReqSl = append(playerStatsReqSl, req)
 	}
 
-	statline.playerStats = newTeamPlayersStatline(playerPins, playerStatsReqSl)
-	return statline
+	teamPlayersSl, err := newTeamPlayersStatline(playerPins, playerStatsReqSl)
+	if err != nil {
+		return TeamStatline{}, err
+	}
+	statline.playerStats = teamPlayersSl
+	return statline, nil
 }

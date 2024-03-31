@@ -2,6 +2,7 @@ package stats
 
 import (
 	json2 "encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -111,15 +112,24 @@ func (gsl *GameStatline) GetPlayerStat(stat PlayerStat, playerPin string) any {
 //	return allowedStats
 //}
 
-func newGameStatline(homePlayerPins, awayPlayerPins []string, gameStats []GameStat) *GameStatline {
+var (
+	ErrDuplicateStatKeys = errors.New("duplicate stat key in statline blueprint")
+)
+
+func newGameStatline(homePlayerPins, awayPlayerPins []string,
+	blueprint GameStatlineBlueprint) (*GameStatline, error) {
 	statline := GameStatline{
 		stats: make(map[string]GameStat),
 	}
 
 	// add each stat's requirements to map and assign to stats map
 	teamStatsReq := make(map[string]TeamStat)
-	for _, s := range gameStats {
+	for _, s := range blueprint {
 		for _, req := range s.req {
+			_, exists := teamStatsReq[req.name]
+			if exists {
+				return nil, ErrDuplicateStatKeys
+			}
 			teamStatsReq[req.name] = req
 		}
 		statline.stats[s.name] = s
@@ -131,9 +141,17 @@ func newGameStatline(homePlayerPins, awayPlayerPins []string, gameStats []GameSt
 	}
 
 	// create team statlines with each slice of player ids
+	homeSl, err := newTeamStatline(homePlayerPins, teamStatsReqSl)
+	if err != nil {
+		return nil, err
+	}
+	awaySl, err := newTeamStatline(awayPlayerPins, teamStatsReqSl)
+	if err != nil {
+		return nil, err
+	}
 	gameTeamsStatline := GameTeamsStatline{
-		home: newTeamStatline(homePlayerPins, teamStatsReqSl),
-		away: newTeamStatline(awayPlayerPins, teamStatsReqSl),
+		home: homeSl,
+		away: awaySl,
 	}
 	statline.teamStats = gameTeamsStatline
 
@@ -147,7 +165,7 @@ func newGameStatline(homePlayerPins, awayPlayerPins []string, gameStats []GameSt
 	}
 	statline.playerStats = primStats
 
-	return &statline
+	return &statline, nil
 }
 
 type CleanGameStatline struct {
