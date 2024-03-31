@@ -12,6 +12,14 @@ func float64ToPercent(value float64) string {
 	case math.IsNaN(value):
 		return "N/A"
 	default:
-		return fmt.Sprintf("%.2f%%", value*100)
+		return fmt.Sprintf("%.1f%%", value*100)
 	}
+}
+
+func assertAndCopyStatsToMap[T Stat](stats []Stat) map[string]T {
+	asserted := make(map[string]T)
+	for _, s := range stats {
+		asserted[s.getName()] = s.(T)
+	}
+	return asserted
 }

@@ -1,26 +1,35 @@
 package stats
 
-type PlayerStat struct {
+type playerStat struct {
 	name    string
 	getFunc func(primStats *PrimitiveStatline) any
 	req     []PrimitiveStat
 }
 
-func (ps PlayerStat) getReq() []Stat {
-	return make([]Stat, 0)
+func (ps playerStat) getReq() []Stat {
+	req := make([]Stat, 0)
+	for _, s := range ps.req {
+		req = append(req, s)
+	}
+	return req
 }
 
-type PlayerStatline struct {
-	stats     map[string]PlayerStat
+func (ps playerStat) getName() string {
+	return ps.name
+}
+
+type playerStatline struct {
+	stats     map[string]playerStat
 	primStats *PrimitiveStatline
+	side      GameTeamSide
 }
 
-func (ps *PlayerStatline) get(stat PlayerStat) any {
+func (ps *playerStatline) get(stat playerStat) any {
 	statStruct := ps.stats[stat.name]
 	return statStruct.getFunc(ps.primStats)
 }
 
-func (ps *PlayerStatline) getAll() map[string]any {
+func (ps *playerStatline) getAll() map[string]any {
 	statline := make(map[string]any)
 	for n, s := range ps.stats {
 		statline[n] = s.getFunc(ps.primStats)
@@ -28,18 +37,15 @@ func (ps *PlayerStatline) getAll() map[string]any {
 	return statline
 }
 
-func newPlayerStatline(playerStats []PlayerStat) (PlayerStatline, error) {
-	statline := PlayerStatline{
-		stats: make(map[string]PlayerStat),
+func newPlayerStatline(playerStats []playerStat, side GameTeamSide) playerStatline {
+	statline := playerStatline{
+		stats: make(map[string]playerStat),
+		side:  side,
 	}
 
 	primReq := make(map[PrimitiveStat]bool)
 	for _, s := range playerStats {
 		for _, req := range s.req {
-			_, exists := primReq[req]
-			if exists {
-				return PlayerStatline{}, ErrDuplicateStatKeys
-			}
 			primReq[req] = true
 		}
 		statline.stats[s.name] = s
@@ -51,5 +57,5 @@ func newPlayerStatline(playerStats []PlayerStat) (PlayerStatline, error) {
 	}
 
 	statline.primStats = newPrimitiveStatline(primReqSl)
-	return statline, nil
+	return statline
 }

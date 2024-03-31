@@ -1,27 +1,22 @@
 package stats
 
-type TeamPlayersStatline map[string]PlayerStatline
+type teamPlayersStatline map[string]playerStatline
 
-func newTeamPlayersStatline(playerPins []string, playerStats []PlayerStat) (TeamPlayersStatline,
-	error) {
-	teamPlayersStatline := TeamPlayersStatline{}
+func newTeamPlayersStatline(playerPins []string, side GameTeamSide, playerStats []playerStat) teamPlayersStatline {
+	teamPlayersStl := teamPlayersStatline{}
 	for _, pin := range playerPins {
-		psl, err := newPlayerStatline(playerStats)
-		if err != nil {
-			return TeamPlayersStatline{}, err
-		}
-		teamPlayersStatline[pin] = psl
+		teamPlayersStl[pin] = newPlayerStatline(playerStats, side)
 	}
-	return teamPlayersStatline, nil
+	return teamPlayersStl
 }
 
-type TeamStat struct {
+type teamStat struct {
 	name    string
-	getFunc func(teamPlayersStats TeamPlayersStatline) any
-	req     []PlayerStat
+	getFunc func(teamPlayersStats teamPlayersStatline) any
+	req     []playerStat
 }
 
-func (ts TeamStat) getReq() []Stat {
+func (ts teamStat) getReq() []Stat {
 	req := make([]Stat, 0)
 	for _, r := range ts.req {
 		req = append(req, r)
@@ -29,16 +24,20 @@ func (ts TeamStat) getReq() []Stat {
 	return req
 }
 
-type TeamStatline struct {
-	stats       map[string]TeamStat
-	playerStats TeamPlayersStatline
+func (ts teamStat) getName() string {
+	return ts.name
 }
 
-func (ps *TeamStatline) get(stat TeamStat) any {
+type teamStatline struct {
+	stats       map[string]teamStat
+	playerStats teamPlayersStatline
+}
+
+func (ps *teamStatline) get(stat teamStat) any {
 	teamStat := ps.stats[stat.name]
 	return teamStat.getFunc(ps.playerStats)
 }
-func (ps *TeamStatline) getAll() map[string]any {
+func (ps *teamStatline) getAll() map[string]any {
 	statline := make(map[string]any)
 	for n, s := range ps.stats {
 		statline[n] = s.getFunc(ps.playerStats)
@@ -46,32 +45,24 @@ func (ps *TeamStatline) getAll() map[string]any {
 	return statline
 }
 
-func newTeamStatline(playerPins []string, teamStats []TeamStat) (TeamStatline, error) {
-	statline := TeamStatline{
-		stats: make(map[string]TeamStat),
+func newTeamStatline(playerPins []string, side GameTeamSide, teamStats []teamStat) teamStatline {
+	statline := teamStatline{
+		stats: make(map[string]teamStat),
 	}
 
-	playerStatsReq := make(map[string]PlayerStat)
+	playerStatsReq := make(map[string]playerStat)
 	for _, s := range teamStats {
 		for _, req := range s.req {
-			_, exists := playerStatsReq[req.name]
-			if exists {
-				return TeamStatline{}, ErrDuplicateStatKeys
-			}
 			playerStatsReq[req.name] = req
 		}
 		statline.stats[s.name] = s
 	}
 
-	playerStatsReqSl := make([]PlayerStat, 0)
+	playerStatsReqSl := make([]playerStat, 0)
 	for _, req := range playerStatsReq {
 		playerStatsReqSl = append(playerStatsReqSl, req)
 	}
 
-	teamPlayersSl, err := newTeamPlayersStatline(playerPins, playerStatsReqSl)
-	if err != nil {
-		return TeamStatline{}, err
-	}
-	statline.playerStats = teamPlayersSl
-	return statline, nil
+	statline.playerStats = newTeamPlayersStatline(playerPins, side, playerStatsReqSl)
+	return statline
 }

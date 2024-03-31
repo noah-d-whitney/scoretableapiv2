@@ -1,9 +1,67 @@
 package stats
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
+
+// Stat interface is typically implemented by a struct that contains a string name, a getFunc,
+// which calculates stat value, and a req slice, which contains all Stat's required to calculate.
+type Stat interface {
+	getReq() []Stat
+	getName() string
+}
+
+// getPrimitiveStats recursively traverses the reqs of a list of Stat's and returns a slice of
+// PrimitiveStat's required.
+func getPrimitiveStats(stats []Stat) []PrimitiveStat {
+	fmt.Printf("LEN: %d || ", len(stats))
+	fmt.Printf("TYPE: %+v\n", stats[0])
+	switch stats[0].(type) {
+	case PrimitiveStat:
+		//primStatsMap := make(map[PrimitiveStat]bool)
+		//for _, s := range stats {
+		//	primStatsMap[s.(PrimitiveStat)] = true
+		//}
+		//
+		primStats := make([]PrimitiveStat, 0)
+		for _, s := range stats {
+			primStats = append(primStats, s.(PrimitiveStat))
+		}
+
+		return primStats
+	default:
+		reqStats := make(map[string]Stat)
+		for _, s := range stats {
+			req := s.getReq()
+			for _, r := range req {
+				reqStats[r.getName()] = r
+			}
+		}
+		reqStatsSl := make([]Stat, 0)
+		for _, s := range reqStats {
+			reqStatsSl = append(reqStatsSl, s)
+		}
+
+		reqStatsStr := make([]string, 0)
+		for _, s := range reqStatsSl {
+			reqStatsStr = append(reqStatsStr, s.getName())
+		}
+		fmt.Printf("%v\n", reqStatsStr)
+		return getPrimitiveStats(reqStatsSl)
+	}
+}
 
 // PrimitiveStat is a string type to define keys of map in PrimitiveStatline
 type PrimitiveStat string
+
+func (ps PrimitiveStat) getReq() []Stat {
+	return make([]Stat, 0)
+}
+
+func (ps PrimitiveStat) getName() string {
+	return string(ps)
+}
 
 // PrimitiveStatline holds a map with keys of type PrimitiveStat and value of type int. Int value
 // holds current value of stat.
