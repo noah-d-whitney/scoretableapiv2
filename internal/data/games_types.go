@@ -30,6 +30,24 @@ type Game struct {
 	} `json:"teams,omitempty"`
 }
 
+func (g *Game) getPlayerPins() (homeTeamPins, awayTeamPins []string) {
+	if g.Teams.Home == nil && g.Teams.Away == nil {
+		return nil, nil
+	}
+
+	homeTeamPins = make([]string, 0)
+	for _, p := range g.Teams.Home.Players {
+		homeTeamPins = append(homeTeamPins, p.PinId.Pin)
+	}
+
+	awayTeamPins = make([]string, 0)
+	for _, p := range g.Teams.Away.Players {
+		awayTeamPins = append(awayTeamPins, p.PinId.Pin)
+	}
+
+	return homeTeamPins, awayTeamPins
+}
+
 type GameDto struct {
 	DateTime     *time.Time    `json:"date_time"`
 	TeamSize     *int64        `json:"team_size"`

@@ -15,18 +15,16 @@ type Stat interface {
 // getPrimitiveStats recursively traverses the reqs of a list of Stat's and returns a slice of
 // PrimitiveStat's required.
 func getPrimitiveStats(stats []Stat) []PrimitiveStat {
-	fmt.Printf("LEN: %d || ", len(stats))
-	fmt.Printf("TYPE: %+v\n", stats[0])
 	switch stats[0].(type) {
 	case PrimitiveStat:
-		//primStatsMap := make(map[PrimitiveStat]bool)
-		//for _, s := range stats {
-		//	primStatsMap[s.(PrimitiveStat)] = true
-		//}
-		//
-		primStats := make([]PrimitiveStat, 0)
+		primStatsMap := make(map[PrimitiveStat]bool)
 		for _, s := range stats {
-			primStats = append(primStats, s.(PrimitiveStat))
+			primStatsMap[s.(PrimitiveStat)] = true
+		}
+
+		primStats := make([]PrimitiveStat, 0)
+		for s, _ := range primStatsMap {
+			primStats = append(primStats, s)
 		}
 
 		return primStats

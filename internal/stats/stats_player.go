@@ -21,7 +21,7 @@ func (ps playerStat) getName() string {
 type playerStatline struct {
 	stats     map[string]playerStat
 	primStats *PrimitiveStatline
-	side      GameTeamSide
+	side      TeamSide
 }
 
 func (ps *playerStatline) get(stat playerStat) any {
@@ -37,7 +37,7 @@ func (ps *playerStatline) getAll() map[string]any {
 	return statline
 }
 
-func newPlayerStatline(playerStats []playerStat, side GameTeamSide) playerStatline {
+func newPlayerStatline(playerStats []playerStat, side TeamSide) playerStatline {
 	statline := playerStatline{
 		stats: make(map[string]playerStat),
 		side:  side,

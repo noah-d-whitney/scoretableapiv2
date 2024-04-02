@@ -24,13 +24,6 @@ func (gs GameStat) getName() string {
 	return gs.name
 }
 
-type GameTeamSide int
-
-const (
-	TeamHome GameTeamSide = iota
-	TeamAway
-)
-
 // GameStatline is a struct that contains a map of PrimitiveStat's at its root,
 // and layers of Stat's over top. Stat's are simply functions that calculate values based on layer
 // of Stat's beneath. For example, PrimitiveStat's are used to calculate playerStats,
@@ -70,9 +63,9 @@ func (gsl *GameStatline) GetDtoFromPrimitive(playerPin string, stat PrimitiveSta
 
 	var teamStats teamStatline
 	switch playerStats.side {
-	case TeamHome:
+	case home:
 		teamStats = gsl.teamStats.home
-	case TeamAway:
+	case away:
 		teamStats = gsl.teamStats.away
 	}
 	teamStatsKept := make([]teamStat, 0)
@@ -98,11 +91,11 @@ func (gsl *GameStatline) GetDtoFromPrimitive(playerPin string, stat PrimitiveSta
 
 	statline.GameStats = gameSl
 	switch playerStats.side {
-	case TeamHome:
+	case home:
 		statline.Teams.Home.TeamStats = teamStl
 		statline.Teams.Home.PlayerStats = make(map[string]statlineDto)
 		statline.Teams.Home.PlayerStats[playerPin] = playerStl
-	case TeamAway:
+	case away:
 		statline.Teams.Away.TeamStats = teamStl
 		statline.Teams.Away.PlayerStats = make(map[string]statlineDto)
 		statline.Teams.Away.PlayerStats[playerPin] = playerStl
@@ -168,8 +161,8 @@ func NewGameStatline(homePlayerPins, awayPlayerPins []string, blueprint GameStat
 
 	// create team statlines with each slice of player ids
 	gameTeamsStl := gameTeamsStatline{
-		home: newTeamStatline(homePlayerPins, TeamHome, teamStatsReqSl),
-		away: newTeamStatline(awayPlayerPins, TeamAway, teamStatsReqSl),
+		home: newTeamStatline(homePlayerPins, home, teamStatsReqSl),
+		away: newTeamStatline(awayPlayerPins, away, teamStatsReqSl),
 	}
 	statline.teamStats = gameTeamsStl
 
@@ -215,16 +208,16 @@ func (gsl *GameStatline) getGameStat(stat GameStat) any {
 	return gameStat.getFunc(gsl.teamStats)
 }
 
-func (gsl *GameStatline) getTeamStat(stat teamStat, side GameTeamSide) any {
-	var teamStatline teamStatline
+func (gsl *GameStatline) getTeamStat(stat teamStat, side TeamSide) any {
+	var teamStl teamStatline
 	switch side {
-	case TeamHome:
-		teamStatline = gsl.teamStats.home
-	case TeamAway:
-		teamStatline = gsl.teamStats.away
+	case home:
+		teamStl = gsl.teamStats.home
+	case away:
+		teamStl = gsl.teamStats.away
 	}
 
-	return teamStatline.get(stat)
+	return teamStl.get(stat)
 }
 
 func (gsl *GameStatline) getPlayerStat(stat playerStat, playerPin string) any {
@@ -233,3 +226,10 @@ func (gsl *GameStatline) getPlayerStat(stat playerStat, playerPin string) any {
 }
 
 type statlineDto map[string]any
+
+type TeamSide int
+
+const (
+	home TeamSide = iota
+	away
+)

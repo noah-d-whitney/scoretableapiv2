@@ -2,7 +2,6 @@ package data
 
 import (
 	"ScoreTableApi/internal/pins"
-	"ScoreTableApi/internal/stats"
 	"context"
 	"time"
 )
@@ -58,7 +57,7 @@ func (m *GameModel) Insert(game *Game) error {
 	}
 
 	if game.HomeTeamPin != nil {
-		err := assignGameTeam(game.ID, game.UserID, *game.HomeTeamPin, stats.TeamHome, tx, ctx)
+		err := assignGameTeam(game.ID, game.UserID, *game.HomeTeamPin, TeamHome, tx, ctx)
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				return rollbackErr

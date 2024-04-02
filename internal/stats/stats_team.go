@@ -2,7 +2,8 @@ package stats
 
 type teamPlayersStatline map[string]playerStatline
 
-func newTeamPlayersStatline(playerPins []string, side GameTeamSide, playerStats []playerStat) teamPlayersStatline {
+func newTeamPlayersStatline(playerPins []string, side TeamSide,
+	playerStats []playerStat) teamPlayersStatline {
 	teamPlayersStl := teamPlayersStatline{}
 	for _, pin := range playerPins {
 		teamPlayersStl[pin] = newPlayerStatline(playerStats, side)
@@ -45,7 +46,7 @@ func (ps *teamStatline) getAll() map[string]any {
 	return statline
 }
 
-func newTeamStatline(playerPins []string, side GameTeamSide, teamStats []teamStat) teamStatline {
+func newTeamStatline(playerPins []string, side TeamSide, teamStats []teamStat) teamStatline {
 	statline := teamStatline{
 		stats: make(map[string]teamStat),
 	}

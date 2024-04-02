@@ -1,7 +1,6 @@
 package data
 
 import (
-	"ScoreTableApi/internal/stats"
 	"context"
 	"database/sql"
 	"errors"
@@ -44,7 +43,7 @@ func (m *GameModel) Update(game *Game) error {
 
 	if game.HomeTeamPin != nil {
 		if *game.HomeTeamPin == "-" {
-			err := unassignGameTeam(game.ID, game.UserID, stats.TeamHome, tx, ctx)
+			err := unassignGameTeam(game.ID, game.UserID, TeamHome, tx, ctx)
 			if err != nil {
 				if rollbackErr := tx.Rollback(); rollbackErr != nil {
 					return rollbackErr
@@ -53,7 +52,7 @@ func (m *GameModel) Update(game *Game) error {
 			}
 			game.Teams.Home = nil
 		} else {
-			err := assignGameTeam(game.ID, game.UserID, *game.HomeTeamPin, stats.TeamHome, tx, ctx)
+			err := assignGameTeam(game.ID, game.UserID, *game.HomeTeamPin, TeamHome, tx, ctx)
 			if err != nil {
 				if rollbackErr := tx.Rollback(); rollbackErr != nil {
 					return rollbackErr
