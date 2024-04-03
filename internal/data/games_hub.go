@@ -26,7 +26,7 @@ func NewGameHub(g *Game) *GameHub {
 
 	return &GameHub{
 		AllowedKeepers: allowedKeepers,
-		GameInProgress: stats.NewGameStatline(homePins, awayPins, stats.Simple),
+		GameInProgress: stats.NewGameStatline(homePins, awayPins, stats.Standard),
 		keepers:        make(map[*Keeper]bool),
 		watchers:       make(map[*Watcher]bool),
 		Events:         make(chan GameEvent),

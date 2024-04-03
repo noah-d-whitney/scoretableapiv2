@@ -86,7 +86,7 @@ func (e GameStatEvent) validate() error {
 }
 
 func (e GameStatEvent) generateClientMessage(h *GameHub) ([]byte, error) {
-	bytes, err := json2.Marshal(h.GameInProgress.GetDtoFromPrimitive(e.PlayerPin, e.Stat))
+	bytes, err := json2.Marshal(h.GameInProgress.GetDto())
 	if err != nil {
 		return nil, err
 	}
