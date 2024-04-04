@@ -1,6 +1,7 @@
 package data
 
 import (
+	"ScoreTableApi/internal/clock"
 	"ScoreTableApi/internal/stats"
 	json2 "encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ type GameEventType int
 
 const (
 	stat GameEventType = iota
+	gameClock
 )
 
 type GenericEvent map[string]any
@@ -58,6 +60,27 @@ func (e GenericEvent) parseEvent() (GameEvent, error) {
 			return GameStatEvent{}, ErrEventParseFailed
 		}
 		return event, nil
+	case gameClock:
+		event := &GameClockEvent{}
+
+		action, err := checkAndAssertIntFromMap(e, "action")
+		if err != nil {
+			return GameClockEvent{}, ErrEventParseFailed
+		}
+		event.Action = clock.EventType(action)
+
+		value, _ := checkAndAssertStringFromMap(e, "value")
+		if value == "" {
+			event.Value = nil
+		} else {
+			event.Value = &value
+		}
+
+		err = event.validate()
+		if err != nil {
+			return GameClockEvent{}, ErrEventParseFailed
+		}
+		return event, nil
 	}
 
 	return GameStatEvent{}, nil
@@ -86,7 +109,7 @@ func (e GameStatEvent) validate() error {
 }
 
 func (e GameStatEvent) generateClientMessage(h *GameHub) ([]byte, error) {
-	bytes, err := json2.Marshal(h.GameInProgress.GetDtoFromPrimitive(e.PlayerPin, e.Stat))
+	bytes, err := json2.Marshal(h.Stats.GetDto())
 	if err != nil {
 		return nil, err
 	}
@@ -98,9 +121,9 @@ func (e GameStatEvent) generateClientMessage(h *GameHub) ([]byte, error) {
 func (e GameStatEvent) execute(h *GameHub) {
 	switch e.Action {
 	case add:
-		h.GameInProgress.Add(e.PlayerPin, e.Stat, 1)
+		h.Stats.Add(e.PlayerPin, e.Stat, 1)
 	case subtract:
-		h.GameInProgress.Add(e.PlayerPin, e.Stat, -1)
+		h.Stats.Add(e.PlayerPin, e.Stat, -1)
 	}
 
 	message, err := e.generateClientMessage(h)
@@ -108,12 +131,62 @@ func (e GameStatEvent) execute(h *GameHub) {
 		return
 	}
 
-	for watcher := range h.watchers {
-		select {
-		case watcher.Receive <- message:
-		default:
-			close(watcher.Receive)
-			delete(h.watchers, watcher)
+	h.ToAllWatchers(message)
+}
+
+type GameClockEvent struct {
+	Action clock.EventType
+	Value  *string
+}
+
+func (e GameClockEvent) validate() error {
+	switch e.Action {
+	case clock.Play, clock.Pause, clock.Reset:
+		if e.Value != nil {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action must have nil Value field"))
 		}
+		return nil
+	case clock.PeriodChange:
+		if e.Value == nil {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action cannot have null Value field"))
+		}
+		if *e.Value == "+" || *e.Value == "-" {
+			return nil
+		} else {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action cannot have specified Value field"))
+		}
+	case clock.Set:
+		if e.Value == nil {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action cannot have null Value field"))
+		}
+		return nil
+	default:
+		return ErrEventValidationFailed
+	}
+}
+
+func (e GameClockEvent) execute(h *GameHub) {
+	switch clock.EventType(e.Action) {
+	case clock.Play:
+		h.Clock.Play()
+	case clock.Pause:
+		h.Clock.Pause()
+	case clock.Reset:
+		h.Clock.Reset()
+	case clock.Set:
+		h.Clock.Set(clock.ClockDuration(*e.Value))
+	case clock.PeriodChange:
+		switch *e.Value {
+		case "+":
+			h.Clock.ChangePeriod(1)
+		case "-":
+			h.Clock.ChangePeriod(-1)
+		}
+	default:
+		return
 	}
 }

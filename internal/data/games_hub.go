@@ -1,6 +1,7 @@
 package data
 
 import (
+	"ScoreTableApi/internal/clock"
 	"ScoreTableApi/internal/stats"
 	"fmt"
 	"slices"
@@ -8,7 +9,8 @@ import (
 
 type GameHub struct {
 	AllowedKeepers []int64
-	GameInProgress *stats.GameStatline
+	Stats          *stats.GameStatline
+	Clock          *clock.GameClock
 	keepers        map[*Keeper]bool
 	watchers       map[*Watcher]bool
 	Events         chan GameEvent
@@ -24,9 +26,21 @@ func NewGameHub(g *Game) *GameHub {
 	allowedKeepers := []int64{g.UserID}
 	homePins, awayPins := g.getPlayerPins()
 
+	var gameClock *clock.GameClock
+	if g.Type == GameTypeTimed {
+		gameClock = clock.NewGameClock(clock.Config{
+			PeriodLength: g.PeriodLength.Duration(),
+			PeriodCount:  *g.PeriodCount,
+			OtDuration:   g.PeriodLength.Duration() / 2,
+		})
+	} else {
+		gameClock = nil
+	}
+
 	return &GameHub{
 		AllowedKeepers: allowedKeepers,
-		GameInProgress: stats.NewGameStatline(homePins, awayPins, stats.Simple),
+		Stats:          stats.NewGameStatline(homePins, awayPins, stats.Standard),
+		Clock:          gameClock,
 		keepers:        make(map[*Keeper]bool),
 		watchers:       make(map[*Watcher]bool),
 		Events:         make(chan GameEvent),
@@ -67,6 +81,17 @@ func (h *GameHub) Run() {
 			for w := range h.watchers {
 				w.Close <- err
 			}
+		}
+	}
+}
+
+func (h *GameHub) ToAllWatchers(msg []byte) {
+	for watcher := range h.watchers {
+		select {
+		case watcher.Receive <- msg:
+		default:
+			close(watcher.Receive)
+			delete(h.watchers, watcher)
 		}
 	}
 }

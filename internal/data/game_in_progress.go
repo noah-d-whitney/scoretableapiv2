@@ -158,6 +158,18 @@ func (w *Watcher) WriteEvents() {
 	}
 }
 
+func (h *GameHub) pipeClockToWatchers() {
+	for {
+		select {
+		case e := <-h.Clock.C:
+			msg := []byte(e.Value)
+			h.ToAllWatchers(msg)
+		case <-h.Errors:
+			return
+		}
+	}
+}
+
 func (m *GameModel) Start(userID int64, gamePin string, gamesInProgress map[string]*GameHub) (
 	*GameHub, error) {
 	game, err := m.Get(userID, gamePin)
@@ -170,6 +182,9 @@ func (m *GameModel) Start(userID int64, gamePin string, gamesInProgress map[stri
 
 	hub := NewGameHub(game)
 	go hub.Run()
+	if game.Type == GameTypeTimed {
+		go hub.pipeClockToWatchers()
+	}
 	gamesInProgress[gamePin] = hub
 
 	return hub, nil
