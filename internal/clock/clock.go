@@ -1,4 +1,4 @@
-package main
+package clock
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var ErrInvalidDuration = errors.New("invalid timer duration string")
+var ErrInvalidDuration = errors.New("invalid clock duration string")
 
 // ClockDuration represents a string in the format "MM:SS"
 type ClockDuration string
@@ -72,7 +72,7 @@ func (gc *GameClock) Play() {
 
 			gc.C <- Event{
 				EventType: Play,
-				value:     gc.Get(),
+				Value:     gc.Get(),
 			}
 
 			for {
@@ -84,7 +84,7 @@ func (gc *GameClock) Play() {
 					if gc.current > 0 {
 						gc.C <- Event{
 							EventType: Tick,
-							value:     gc.Get(),
+							Value:     gc.Get(),
 						}
 					} else {
 						go gc.done()
@@ -103,7 +103,7 @@ func (gc *GameClock) Pause() {
 		gc.state = paused
 		gc.C <- Event{
 			EventType: Pause,
-			value:     "",
+			Value:     "",
 		}
 	}
 	return
@@ -125,7 +125,7 @@ func (gc *GameClock) Reset() {
 
 	gc.C <- Event{
 		EventType: Reset,
-		value:     gc.Get(),
+		Value:     gc.Get(),
 	}
 	return
 }
@@ -145,7 +145,7 @@ func (gc *GameClock) Set(dur ClockDuration) {
 
 	gc.C <- Event{
 		EventType: Set,
-		value:     gc.Get(),
+		Value:     gc.Get(),
 	}
 	return
 }
@@ -170,7 +170,7 @@ func (gc *GameClock) Adjust(dur ClockDuration, add bool) {
 
 	gc.C <- Event{
 		EventType: Set,
-		value:     gc.Get(),
+		Value:     gc.Get(),
 	}
 	return
 }
@@ -215,7 +215,7 @@ func (gc *GameClock) ChangePeriod(add int64) {
 	gc.current = gc.config.PeriodLength
 	gc.C <- Event{
 		EventType: PeriodChange,
-		value:     fmt.Sprintf("%d/%d", gc.period, gc.config.PeriodCount),
+		Value:     fmt.Sprintf("%d/%d", gc.period, gc.config.PeriodCount),
 	}
 }
 
@@ -242,7 +242,7 @@ func (gc *GameClock) done() {
 	gc.state = done
 	gc.C <- Event{
 		EventType: Done,
-		value:     "",
+		Value:     "",
 	}
 	return
 }
@@ -267,10 +267,10 @@ const (
 
 type Event struct {
 	EventType
-	value string
+	Value string
 }
 
-func newGameClock(cfg Config) *GameClock {
+func NewGameClock(cfg Config) *GameClock {
 	clock := &GameClock{
 		current: cfg.PeriodLength,
 		state:   fresh,
@@ -281,32 +281,4 @@ func newGameClock(cfg Config) *GameClock {
 	}
 
 	return clock
-}
-
-func main() {
-	clock := newGameClock(Config{
-		PeriodLength: 10 * time.Second,
-		PeriodCount:  4,
-		OtDuration:   5 * time.Second,
-	})
-
-	go func() {
-		time.Sleep(3 * time.Second)
-		clock.Pause()
-		time.Sleep(time.Second)
-		clock.Close()
-	}()
-
-	clock.Play()
-	for {
-		select {
-		case e, ok := <-clock.C:
-			if !ok {
-				return
-			}
-			fmt.Printf("%+v\n", e)
-		case <-time.NewTimer(5 * time.Minute).C:
-			return
-		}
-	}
 }

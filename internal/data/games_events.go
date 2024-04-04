@@ -1,6 +1,7 @@
 package data
 
 import (
+	"ScoreTableApi/internal/clock"
 	"ScoreTableApi/internal/stats"
 	json2 "encoding/json"
 	"errors"
@@ -86,7 +87,7 @@ func (e GameStatEvent) validate() error {
 }
 
 func (e GameStatEvent) generateClientMessage(h *GameHub) ([]byte, error) {
-	bytes, err := json2.Marshal(h.GameInProgress.GetDto())
+	bytes, err := json2.Marshal(h.Stats.GetDto())
 	if err != nil {
 		return nil, err
 	}
@@ -98,9 +99,9 @@ func (e GameStatEvent) generateClientMessage(h *GameHub) ([]byte, error) {
 func (e GameStatEvent) execute(h *GameHub) {
 	switch e.Action {
 	case add:
-		h.GameInProgress.Add(e.PlayerPin, e.Stat, 1)
+		h.Stats.Add(e.PlayerPin, e.Stat, 1)
 	case subtract:
-		h.GameInProgress.Add(e.PlayerPin, e.Stat, -1)
+		h.Stats.Add(e.PlayerPin, e.Stat, -1)
 	}
 
 	message, err := e.generateClientMessage(h)
@@ -108,12 +109,48 @@ func (e GameStatEvent) execute(h *GameHub) {
 		return
 	}
 
-	for watcher := range h.watchers {
-		select {
-		case watcher.Receive <- message:
-		default:
-			close(watcher.Receive)
-			delete(h.watchers, watcher)
+	h.ToAllWatchers(message)
+}
+
+type GameClockEvent struct {
+	Action clock.EventType
+	Value  *string
+}
+
+func (e GameClockEvent) validate() error {
+	switch e.Action {
+	case clock.Play, clock.Pause, clock.Reset:
+		if e.Value != nil {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action must have nil Value field"))
 		}
+		return nil
+	case clock.PeriodChange:
+		if e.Value == nil {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action cannot have null Value field"))
+		}
+		if *e.Value == "+" || *e.Value == "-" {
+			return nil
+		} else {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action cannot have specified Value field"))
+		}
+	case clock.Set:
+		if e.Value == nil {
+			return errors.Join(ErrEventValidationFailed,
+				errors.New("clock event with specified action cannot have null Value field"))
+		}
+		return nil
+	default:
+		return ErrEventValidationFailed
+	}
+}
+
+func (e GameClockEvent) execute(h *GameHub) {
+	switch e.Action {
+	case clock.Play:
+		h.Clock.Play()
+
 	}
 }
