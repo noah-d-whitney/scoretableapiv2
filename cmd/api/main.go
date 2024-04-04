@@ -127,13 +127,15 @@ func main() {
 	}))
 
 	app := &application{
-		logger:   logger,
-		config:   cfg,
-		models:   data.NewModels(db),
-		gameHubs: gamehub.NewModel(db),
+		logger: logger,
+		config: cfg,
+		models: data.NewModels(db),
 		mailer: mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password,
 			cfg.smtp.sender),
 	}
+
+	hubModel := gamehub.NewModel(&app.models.Games)
+	app.gameHubs = hubModel
 
 	//go func() {
 	//	for {

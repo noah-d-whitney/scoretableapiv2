@@ -2,10 +2,13 @@ package gamehub
 
 import (
 	"ScoreTableApi/internal/clock"
+	"ScoreTableApi/internal/data"
 	"ScoreTableApi/internal/stats"
+	json2 "encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"net/http"
 	"slices"
 )
 
@@ -15,6 +18,7 @@ var (
 
 type Hub struct {
 	AllowedKeepers []int64
+	Game           *data.Game
 	Stats          *stats.GameStatline
 	Clock          *clock.GameClock
 	keepers        map[int64]*Keeper
@@ -23,7 +27,13 @@ type Hub struct {
 	Errors         chan error
 }
 
-func (h *Hub) JoinKeeper(k *Keeper) error {
+func (h *Hub) JoinKeeper(userID int64, w http.ResponseWriter, r *http.Request) error {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		h.Errors <- err
+	}
+
+	k := newKeeper(userID, h, conn)
 	if !slices.Contains(h.AllowedKeepers, k.UserID) {
 		return ErrKeeperNotAuthorized
 	}
@@ -31,6 +41,13 @@ func (h *Hub) JoinKeeper(k *Keeper) error {
 	h.keepers[k.UserID] = k
 	go k.ReadEvents()
 	go k.WriteEvents()
+
+	welcomeData := h.toByteArr(envelope{
+		"stats":  h.Stats.GetDto(),
+		"clock":  h.Clock.Get(),
+		"period": h.Clock.GetPeriod(),
+		"game":   h.Game,
+	})
 
 	return nil
 }
@@ -44,10 +61,20 @@ func (h *Hub) LeaveKeeper(userID int64) {
 	}
 }
 
+// TODO make JoinWatcher receive w and r instead of conn
+
 func (h *Hub) JoinWatcher(conn *websocket.Conn) *Watcher {
 	w := newWatcher(h, conn)
 	h.Watchers[w] = true
 	go w.WriteEvents()
+
+	welcomeData := h.toByteArr(envelope{
+		"stats":  h.Stats.GetDto(),
+		"clock":  h.Clock.Get(),
+		"period": h.Clock.GetPeriod(),
+		"game":   h.Game,
+	})
+	w.Receive <- welcomeData
 	return w
 }
 
@@ -68,6 +95,9 @@ func (h *Hub) Run() {
 		case event := <-h.Events:
 			fmt.Printf("event from hub: %v", event)
 			event.execute(h)
+		case tick := <-h.Clock.C:
+			msg := h.toByteArr(envelope{"clock": tick.Value})
+			h.ToAllWatchers(msg)
 		case err := <-h.Errors:
 			fmt.Printf("\nHUB ERROR: %s\n", err.Error())
 			for _, k := range h.keepers {
@@ -90,14 +120,9 @@ func (h *Hub) ToAllWatchers(msg []byte) {
 	}
 }
 
-func (h *Hub) PipeClockToWatchers() {
-	for {
-		select {
-		case e := <-h.Clock.C:
-			msg := []byte(e.Value)
-			h.ToAllWatchers(msg)
-		case <-h.Errors:
-			return
-		}
-	}
+func (h *Hub) toByteArr(v envelope) []byte {
+	bytes, _ := json2.Marshal(v)
+	return bytes
 }
+
+type envelope map[string]any

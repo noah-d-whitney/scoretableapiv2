@@ -2,7 +2,6 @@ package main
 
 import (
 	"ScoreTableApi/internal/data"
-	"ScoreTableApi/internal/gamehub"
 	"ScoreTableApi/internal/validator"
 	"errors"
 	"fmt"
@@ -216,35 +215,38 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	//userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))
 
+	g, err := app.models.Games.Get(7, pin)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+	}
+
+	h, err := app.gameHubs.StartGame(g)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
 	// Get game from db and send
 	// create game stat object and hub
 	// Accept message
 	// Update game stat in hub
 	// Send updates to all clients
 	// Send event to DB concurrently
-	hub, err := app.gameHubs.StartGame(pin, 7)
+	err = h.JoinKeeper(7, w, r)
 	if err != nil {
-		return
+		h.Errors <- err
 	}
-
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		hub.Errors <- err
-	}
-
-	k := gamehub.NewKeeper(7, hub, conn)
-
-	err = hub.JoinKeeper(k)
-
 }
 
 func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
 	//userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))
 
-	watcher, err := app.gameHubs.WatcherJoinGame(pin, w, r)
+	_, err := app.gameHubs.WatcherJoinGame(pin, w, r)
 	if err != nil {
-		app.serverErrorResponse(w, r, err)
+		fmt.Printf(err.Error())
 	}
-	defer watcher.Hub.LeaveWatcher(watcher)
 }

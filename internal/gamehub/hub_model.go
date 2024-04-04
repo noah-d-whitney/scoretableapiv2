@@ -2,9 +2,8 @@ package gamehub
 
 import (
 	"ScoreTableApi/internal/clock"
+	"ScoreTableApi/internal/data"
 	"ScoreTableApi/internal/stats"
-	"context"
-	"database/sql"
 	"errors"
 	"github.com/gorilla/websocket"
 	"net/http"
@@ -22,34 +21,31 @@ var (
 
 type HubModel struct {
 	active map[string]*Hub
-	db     *sql.DB
+	model  *data.GameModel
 }
 
-func NewModel(db *sql.DB) HubModel {
+func NewModel(model *data.GameModel) HubModel {
 	return HubModel{
 		active: make(map[string]*Hub),
-		db:     db,
+		model:  model,
 	}
 }
 
-func (m *HubModel) StartGame(pin string, userID int64) (*Hub, error) {
-	g, err := m.getGame(pin, userID)
+func (m *HubModel) StartGame(g *data.Game) (*Hub, error) {
+	err := m.validateGame(g)
 	if err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			return nil, ErrGameNotFound
-		default:
-			return nil, err
-		}
+		return nil, err
 	}
-	err = m.validateGame(g)
+
+	err = m.model.StartGameInDB(g)
 	if err != nil {
 		return nil, err
 	}
 
 	hub := &Hub{
-		AllowedKeepers: g.allowedKeepers,
-		Stats:          stats.NewGameStatline(g.homePlayerPins, g.awayPlayerPins, g.blueprint),
+		AllowedKeepers: []int64{g.UserID},
+		Game:           g,
+		Stats:          stats.NewGameStatline(g.HomePlayerPins, g.AwayPlayerPins, stats.Simple),
 		keepers:        make(map[int64]*Keeper),
 		Watchers:       make(map[*Watcher]bool),
 		Events:         make(chan GameEvent),
@@ -57,21 +53,22 @@ func (m *HubModel) StartGame(pin string, userID int64) (*Hub, error) {
 	}
 
 	var c *clock.GameClock
-	if g.gameType == "timed" {
+	if g.Type == "timed" {
 		c = clock.NewGameClock(clock.Config{
-			PeriodLength: *g.periodLength,
-			PeriodCount:  *g.periodCount,
-			OtDuration:   *g.periodLength / 2,
+			PeriodLength: time.Duration(*g.PeriodLength),
+			PeriodCount:  *g.PeriodCount,
+			OtDuration:   time.Duration(*g.PeriodLength) / 2,
 		})
 	} else {
-		c = nil
+		c = clock.NewGameClock(clock.Config{
+			PeriodLength: 0,
+			PeriodCount:  0,
+			OtDuration:   0,
+		})
 	}
 	hub.Clock = c
 
-	m.active[g.pin] = hub
-	if hub.Clock != nil {
-		go hub.PipeClockToWatchers()
-	}
+	m.active[g.PinID.Pin] = hub
 	go hub.Run()
 
 	return hub, nil
@@ -93,63 +90,11 @@ func (m *HubModel) WatcherJoinGame(pin string, wr http.ResponseWriter, r *http.R
 	return w, nil
 }
 
-func (m *HubModel) validateGame(game *game) error {
-	if game.homeTeamPin == nil || game.awayTeamPin == nil {
+// TODO validate game before starting
+
+func (m *HubModel) validateGame(game *data.Game) error {
+	if game.HomeTeamPin == nil || game.AwayTeamPin == nil {
 		return ErrTwoTeams
 	}
 	return nil
-}
-
-func (m *HubModel) getGame(pin string, userID int64) (*game, error) {
-	stmt := `
-		SELECT pin, user_id, home_team_pin, away_team_pin, home_player_pins, away_player_pins,
-			period_count, period_length, score_target, type, team_size
-		FROM games_view
-		WHERE pin = $1 AND user_id = $2`
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	var g game
-	err := m.db.QueryRowContext(ctx, stmt, pin, userID).Scan(
-		&g.pin,
-		&g.owner,
-		&g.homeTeamPin,
-		&g.awayTeamPin,
-		&g.homePlayerPins,
-		&g.awayPlayerPins,
-		&g.periodCount,
-		&g.periodLength,
-		&g.scoreTarget,
-		&g.gameType,
-		&g.teamSize,
-	)
-	if err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			return nil, ErrGameNotFound
-		default:
-			return nil, err
-		}
-	}
-
-	g.blueprint = stats.Simple
-	g.allowedKeepers = []int64{g.owner}
-
-	return &g, nil
-}
-
-type game struct {
-	pin            string
-	owner          int64
-	allowedKeepers []int64
-	homeTeamPin    *string
-	awayTeamPin    *string
-	homePlayerPins []string
-	gameType       string
-	awayPlayerPins []string
-	periodCount    *int64
-	periodLength   *time.Duration
-	scoreTarget    *int64
-	teamSize       int64
-	blueprint      stats.Blueprint
 }

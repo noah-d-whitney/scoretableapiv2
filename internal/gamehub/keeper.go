@@ -15,17 +15,8 @@ type Keeper struct {
 	Close   chan bool
 }
 
-func NewKeeper(userID int64, hub *Hub, conn *websocket.Conn) *Keeper {
-	return &Keeper{
-		Hub:     hub,
-		Conn:    conn,
-		UserID:  userID,
-		Receive: make(chan []byte),
-		Close:   make(chan bool),
-	}
-}
-
 // TODO return close error on game hub and close connections and goroutines when closed
+
 func (k *Keeper) WriteEvents() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
