@@ -2,6 +2,7 @@ package main
 
 import (
 	"ScoreTableApi/internal/data"
+	"ScoreTableApi/internal/gamehub"
 	"ScoreTableApi/internal/validator"
 	"errors"
 	"fmt"
@@ -221,7 +222,7 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	// Update game stat in hub
 	// Send updates to all clients
 	// Send event to DB concurrently
-	hub, err := app.models.Games.Start(7, pin, app.gamesInProgress)
+	hub, _, err := app.models.Games.Start(7, pin, app.gamesInProgress)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -231,7 +232,7 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 		app.models.Games.End(pin, app.gamesInProgress)
 		return nil
 	})
-	keeper := data.Keeper{
+	keeper := gamehub.keeper{
 		Hub:    app.gamesInProgress[pin],
 		Conn:   conn,
 		UserID: 7,
@@ -256,7 +257,7 @@ func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
 		hub.Errors <- err
 		return
 	}
-	watcher := data.Watcher{
+	watcher := gamehub.Watcher{
 		Hub:     hub,
 		Conn:    conn,
 		Receive: make(chan []byte),

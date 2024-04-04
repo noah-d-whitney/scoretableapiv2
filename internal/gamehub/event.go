@@ -1,4 +1,4 @@
-package data
+package gamehub
 
 import (
 	"ScoreTableApi/internal/clock"
@@ -8,13 +8,8 @@ import (
 	"fmt"
 )
 
-var (
-	ErrEventParseFailed      = errors.New("could not parse game event")
-	ErrEventValidationFailed = errors.New("event validation failed")
-)
-
 type GameEvent interface {
-	execute(hub *GameHub)
+	execute(hub *Hub)
 }
 
 type GameEventType int
@@ -108,7 +103,7 @@ func (e GameStatEvent) validate() error {
 	return nil
 }
 
-func (e GameStatEvent) generateClientMessage(h *GameHub) ([]byte, error) {
+func (e GameStatEvent) generateClientMessage(h *Hub) ([]byte, error) {
 	bytes, err := json2.Marshal(h.Stats.GetDto())
 	if err != nil {
 		return nil, err
@@ -118,7 +113,7 @@ func (e GameStatEvent) generateClientMessage(h *GameHub) ([]byte, error) {
 	return bytes, nil
 }
 
-func (e GameStatEvent) execute(h *GameHub) {
+func (e GameStatEvent) execute(h *Hub) {
 	switch e.Action {
 	case add:
 		h.Stats.Add(e.PlayerPin, e.Stat, 1)
@@ -169,7 +164,7 @@ func (e GameClockEvent) validate() error {
 	}
 }
 
-func (e GameClockEvent) execute(h *GameHub) {
+func (e GameClockEvent) execute(h *Hub) {
 	switch clock.EventType(e.Action) {
 	case clock.Play:
 		h.Clock.Play()

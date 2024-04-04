@@ -1,17 +1,17 @@
 package stats
 
-// GameStatlineBlueprint is a slice of GameStat's used to initialize a GameStatline
-type GameStatlineBlueprint []GameStat
+// Blueprint is a slice of GameStat's used to initialize a GameStatline
+type Blueprint []GameStat
 
 var (
-	Standard GameStatlineBlueprint = []GameStat{PointsCompound, FieldGoalsAttempted,
+	Standard Blueprint = []GameStat{PointsCompound, FieldGoalsAttempted,
 		FieldGoalsMade, FieldGoalPercent, FreeThrowsAttempted, FreeThrowsMade, FreeThrowPercent,
 		TwosAttempted, TwosMade, TwoPointPercent, ThreesAttempted, ThreesMade, ThreePointPercent,
 		ReboundsCompound, DefensiveRebounds, OffensiveRebounds, Steals, Blocks, Assists, Turnovers,
 		FoulsSimple}
-	Simple GameStatlineBlueprint = []GameStat{PointsSimple, ReboundsSimple, Steals, Blocks, Assists,
+	Simple Blueprint = []GameStat{PointsSimple, ReboundsSimple, Steals, Blocks, Assists,
 		Turnovers, FoulsSimple}
-	NoMisses GameStatlineBlueprint = []GameStat{PointsCompound, FieldGoalsMade, FreeThrowsMade,
+	NoMisses Blueprint = []GameStat{PointsCompound, FieldGoalsMade, FreeThrowsMade,
 		TwosMade, ThreesMade, ReboundsSimple, Steals, Blocks, Assists, FoulsSimple}
 )
 

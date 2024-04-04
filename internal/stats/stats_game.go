@@ -138,9 +138,9 @@ func (gsl *GameStatline) GetDto() GameStatlineDto {
 	return cleanStatline
 }
 
-// NewGameStatline returns a pointer to a GameStatline with specified GameStatlineBlueprint and
+// NewGameStatline returns a pointer to a GameStatline with specified Blueprint and
 // player pins.
-func NewGameStatline(homePlayerPins, awayPlayerPins []string, blueprint GameStatlineBlueprint) *GameStatline {
+func NewGameStatline(homePlayerPins, awayPlayerPins []string, blueprint Blueprint) *GameStatline {
 	statline := GameStatline{
 		stats: make(map[string]GameStat),
 	}

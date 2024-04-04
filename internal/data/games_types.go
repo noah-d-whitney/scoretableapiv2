@@ -30,7 +30,7 @@ type Game struct {
 	} `json:"teams,omitempty"`
 }
 
-func (g *Game) getPlayerPins() (homeTeamPins, awayTeamPins []string) {
+func (g *Game) GetPlayerPins() (homeTeamPins, awayTeamPins []string) {
 	if g.Teams.Home == nil && g.Teams.Away == nil {
 		return nil, nil
 	}

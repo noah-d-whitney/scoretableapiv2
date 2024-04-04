@@ -2,6 +2,7 @@ package main
 
 import (
 	"ScoreTableApi/internal/data"
+	"ScoreTableApi/internal/gamehub"
 	"ScoreTableApi/internal/jsonlog"
 	"ScoreTableApi/internal/mailer"
 	"context"
@@ -52,7 +53,7 @@ type application struct {
 	config          config
 	models          data.Models
 	mailer          mailer.Mailer
-	gamesInProgress map[string]*data.GameHub
+	gamesInProgress map[string]*gamehub.Hub
 	wg              sync.WaitGroup
 }
 
@@ -129,7 +130,7 @@ func main() {
 		logger:          logger,
 		config:          cfg,
 		models:          data.NewModels(db),
-		gamesInProgress: make(map[string]*data.GameHub),
+		gamesInProgress: make(map[string]*gamehub.Hub),
 		mailer: mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password,
 			cfg.smtp.sender),
 	}
