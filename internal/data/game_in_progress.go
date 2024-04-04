@@ -164,6 +164,8 @@ func (h *GameHub) pipeClockToWatchers() {
 		case e := <-h.Clock.C:
 			msg := []byte(e.Value)
 			h.ToAllWatchers(msg)
+		case <-h.Errors:
+			return
 		}
 	}
 }
@@ -180,7 +182,9 @@ func (m *GameModel) Start(userID int64, gamePin string, gamesInProgress map[stri
 
 	hub := NewGameHub(game)
 	go hub.Run()
-	go hub.pipeClockToWatchers()
+	if game.Type == GameTypeTimed {
+		go hub.pipeClockToWatchers()
+	}
 	gamesInProgress[gamePin] = hub
 
 	return hub, nil

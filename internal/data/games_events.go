@@ -21,6 +21,7 @@ type GameEventType int
 
 const (
 	stat GameEventType = iota
+	gameClock
 )
 
 type GenericEvent map[string]any
@@ -57,6 +58,27 @@ func (e GenericEvent) parseEvent() (GameEvent, error) {
 		err = event.validate()
 		if err != nil {
 			return GameStatEvent{}, ErrEventParseFailed
+		}
+		return event, nil
+	case gameClock:
+		event := &GameClockEvent{}
+
+		action, err := checkAndAssertIntFromMap(e, "action")
+		if err != nil {
+			return GameClockEvent{}, ErrEventParseFailed
+		}
+		event.Action = clock.EventType(action)
+
+		value, _ := checkAndAssertStringFromMap(e, "value")
+		if value == "" {
+			event.Value = nil
+		} else {
+			event.Value = &value
+		}
+
+		err = event.validate()
+		if err != nil {
+			return GameClockEvent{}, ErrEventParseFailed
 		}
 		return event, nil
 	}
@@ -148,9 +170,23 @@ func (e GameClockEvent) validate() error {
 }
 
 func (e GameClockEvent) execute(h *GameHub) {
-	switch e.Action {
+	switch clock.EventType(e.Action) {
 	case clock.Play:
 		h.Clock.Play()
-
+	case clock.Pause:
+		h.Clock.Pause()
+	case clock.Reset:
+		h.Clock.Reset()
+	case clock.Set:
+		h.Clock.Set(clock.ClockDuration(*e.Value))
+	case clock.PeriodChange:
+		switch *e.Value {
+		case "+":
+			h.Clock.ChangePeriod(1)
+		case "-":
+			h.Clock.ChangePeriod(-1)
+		}
+	default:
+		return
 	}
 }

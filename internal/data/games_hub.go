@@ -26,22 +26,29 @@ func NewGameHub(g *Game) *GameHub {
 	allowedKeepers := []int64{g.UserID}
 	homePins, awayPins := g.getPlayerPins()
 
-	return &GameHub{
-		AllowedKeepers: allowedKeepers,
-		Stats:          stats.NewGameStatline(homePins, awayPins, stats.Standard),
-		Clock: clock.NewGameClock(clock.Config{
+	var gameClock *clock.GameClock
+	if g.Type == GameTypeTimed {
+		gameClock = clock.NewGameClock(clock.Config{
 			PeriodLength: g.PeriodLength.Duration(),
 			PeriodCount:  *g.PeriodCount,
 			OtDuration:   g.PeriodLength.Duration() / 2,
-		}),
-		keepers:      make(map[*Keeper]bool),
-		watchers:     make(map[*Watcher]bool),
-		Events:       make(chan GameEvent),
-		Errors:       make(chan error),
-		JoinWatcher:  make(chan *Watcher),
-		JoinKeeper:   make(chan *Keeper),
-		LeaveKeeper:  make(chan *Keeper),
-		LeaveWatcher: make(chan *Watcher),
+		})
+	} else {
+		gameClock = nil
+	}
+
+	return &GameHub{
+		AllowedKeepers: allowedKeepers,
+		Stats:          stats.NewGameStatline(homePins, awayPins, stats.Standard),
+		Clock:          gameClock,
+		keepers:        make(map[*Keeper]bool),
+		watchers:       make(map[*Watcher]bool),
+		Events:         make(chan GameEvent),
+		Errors:         make(chan error),
+		JoinWatcher:    make(chan *Watcher),
+		JoinKeeper:     make(chan *Keeper),
+		LeaveKeeper:    make(chan *Keeper),
+		LeaveWatcher:   make(chan *Watcher),
 	}
 }
 
