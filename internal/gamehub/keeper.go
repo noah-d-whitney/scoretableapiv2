@@ -7,31 +7,30 @@ import (
 	"time"
 )
 
-type keeper struct {
+type Keeper struct {
 	Hub     *Hub
 	Conn    *websocket.Conn
 	UserID  int64
 	Receive chan []byte
-	Close   chan error
+	Close   chan bool
 }
 
-func newKeeper(userID int64, hub *Hub, conn *websocket.Conn) *keeper {
-	return &keeper{
+func NewKeeper(userID int64, hub *Hub, conn *websocket.Conn) *Keeper {
+	return &Keeper{
 		Hub:     hub,
 		Conn:    conn,
 		UserID:  userID,
 		Receive: make(chan []byte),
-		Close:   make(chan error),
+		Close:   make(chan bool),
 	}
 }
 
 // TODO return close error on game hub and close connections and goroutines when closed
-func (k *keeper) WriteEvents() {
+func (k *Keeper) WriteEvents() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		k.Hub.LeaveKeeper <- k
-		k.Conn.Close()
+		k.Hub.LeaveKeeper(k.UserID)
 	}()
 	for {
 		select {
@@ -40,8 +39,8 @@ func (k *keeper) WriteEvents() {
 			if err := k.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
-		case closeErr := <-k.Close:
-			closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, closeErr.Error())
+		case <-k.Close:
+			closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 			writer, err := k.Conn.NextWriter(websocket.CloseMessage)
 			if err != nil {
 				return
@@ -53,10 +52,9 @@ func (k *keeper) WriteEvents() {
 	}
 }
 
-func (k *keeper) ReadEvents() {
+func (k *Keeper) ReadEvents() {
 	defer func() {
-		k.Hub.LeaveKeeper <- k
-		k.Conn.Close()
+		k.Hub.LeaveKeeper(k.UserID)
 	}()
 	for {
 		k.Conn.SetReadLimit(maxMessageSize)

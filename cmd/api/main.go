@@ -49,12 +49,12 @@ type config struct {
 }
 
 type application struct {
-	logger          *jsonlog.Logger
-	config          config
-	models          data.Models
-	mailer          mailer.Mailer
-	gamesInProgress map[string]*gamehub.Hub
-	wg              sync.WaitGroup
+	logger   *jsonlog.Logger
+	config   config
+	models   data.Models
+	gameHubs gamehub.HubModel
+	mailer   mailer.Mailer
+	wg       sync.WaitGroup
 }
 
 func main() {
@@ -127,20 +127,20 @@ func main() {
 	}))
 
 	app := &application{
-		logger:          logger,
-		config:          cfg,
-		models:          data.NewModels(db),
-		gamesInProgress: make(map[string]*gamehub.Hub),
+		logger:   logger,
+		config:   cfg,
+		models:   data.NewModels(db),
+		gameHubs: gamehub.NewModel(db),
 		mailer: mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password,
 			cfg.smtp.sender),
 	}
 
-	go func() {
-		for {
-			fmt.Printf("%+v\n", app.gamesInProgress)
-			time.Sleep(3 * time.Second)
-		}
-	}()
+	//go func() {
+	//	for {
+	//		fmt.Printf("%+v\n", app.gameH)
+	//		time.Sleep(3 * time.Second)
+	//	}
+	//}()
 
 	err = app.serve()
 	if err != nil {

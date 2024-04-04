@@ -10,66 +10,71 @@ import (
 )
 
 var (
-	ErrKeeperNotAuthorized = errors.New("keeper not authorized")
+	ErrKeeperNotAuthorized = errors.New("Keeper not authorized")
 )
 
 type Hub struct {
 	AllowedKeepers []int64
 	Stats          *stats.GameStatline
 	Clock          *clock.GameClock
-	keepers        map[*keeper]bool
+	keepers        map[int64]*Keeper
 	Watchers       map[*Watcher]bool
 	Events         chan GameEvent
 	Errors         chan error
-	JoinWatcher    chan *Watcher
-	joinKeeper     chan *keeper
-	LeaveWatcher   chan *Watcher
-	LeaveKeeper    chan *keeper
 }
 
-func (h *Hub) JoinKeeper(userID int64, conn *websocket.Conn) error {
-	keeper := newKeeper(userID, h, conn)
-	if !slices.Contains(h.AllowedKeepers, keeper.UserID) {
+func (h *Hub) JoinKeeper(k *Keeper) error {
+	if !slices.Contains(h.AllowedKeepers, k.UserID) {
 		return ErrKeeperNotAuthorized
 	}
 
-	h.joinKeeper <- keeper
-	go keeper.ReadEvents()
-	go keeper.WriteEvents()
+	h.keepers[k.UserID] = k
+	go k.ReadEvents()
+	go k.WriteEvents()
 
 	return nil
 }
 
-// TODO pass in blueprint on create statline, send out list of possible stats to keeper and client
+func (h *Hub) LeaveKeeper(userID int64) {
+	if k, ok := h.keepers[userID]; ok {
+		delete(h.keepers, userID)
+		close(k.Receive)
+		close(k.Close)
+		k.Conn.Close()
+	}
+}
+
+func (h *Hub) JoinWatcher(conn *websocket.Conn) *Watcher {
+	w := newWatcher(h, conn)
+	h.Watchers[w] = true
+	go w.WriteEvents()
+	return w
+}
+
+func (h *Hub) LeaveWatcher(w *Watcher) {
+	if _, ok := h.Watchers[w]; ok {
+		delete(h.Watchers, w)
+		close(w.Receive)
+		close(w.Error)
+		w.Conn.Close()
+	}
+}
+
+// TODO pass in blueprint on create statline, send out list of possible stats to Keeper and client
 
 func (h *Hub) Run() {
 	for {
 		select {
-		case watcher := <-h.JoinWatcher:
-			h.Watchers[watcher] = true
-		case watcher := <-h.LeaveWatcher:
-			if _, ok := h.Watchers[watcher]; ok {
-				delete(h.Watchers, watcher)
-				close(watcher.Receive)
-			}
-		case keeper := <-h.JoinKeeper:
-			if slices.Contains(h.AllowedKeepers, keeper.UserID) {
-				h.keepers[keeper] = true
-			}
-		case keeper := <-h.LeaveKeeper:
-			if _, ok := h.keepers[keeper]; ok {
-				delete(h.keepers, keeper)
-			}
 		case event := <-h.Events:
 			fmt.Printf("event from hub: %v", event)
 			event.execute(h)
 		case err := <-h.Errors:
 			fmt.Printf("\nHUB ERROR: %s\n", err.Error())
-			for k := range h.keepers {
-				k.Close <- err
+			for _, k := range h.keepers {
+				k.Close <- true
 			}
 			for w := range h.Watchers {
-				w.Close <- err
+				w.Error <- err
 			}
 		}
 	}
@@ -80,8 +85,7 @@ func (h *Hub) ToAllWatchers(msg []byte) {
 		select {
 		case watcher.Receive <- msg:
 		default:
-			close(watcher.Receive)
-			delete(h.Watchers, watcher)
+			h.LeaveWatcher(watcher)
 		}
 	}
 }

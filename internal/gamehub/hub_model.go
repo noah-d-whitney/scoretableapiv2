@@ -6,17 +6,30 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/gorilla/websocket"
+	"net/http"
 	"time"
 )
 
 var (
 	ErrGameNotFound = errors.New("game not found")
 	ErrTwoTeams     = errors.New("game must have two teams to start")
+	upgrader        = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
 )
 
 type HubModel struct {
-	Active map[string]*Hub
+	active map[string]*Hub
 	db     *sql.DB
+}
+
+func NewModel(db *sql.DB) HubModel {
+	return HubModel{
+		active: make(map[string]*Hub),
+		db:     db,
+	}
 }
 
 func (m *HubModel) StartGame(pin string, userID int64) (*Hub, error) {
@@ -29,7 +42,6 @@ func (m *HubModel) StartGame(pin string, userID int64) (*Hub, error) {
 			return nil, err
 		}
 	}
-
 	err = m.validateGame(g)
 	if err != nil {
 		return nil, err
@@ -38,35 +50,47 @@ func (m *HubModel) StartGame(pin string, userID int64) (*Hub, error) {
 	hub := &Hub{
 		AllowedKeepers: g.allowedKeepers,
 		Stats:          stats.NewGameStatline(g.homePlayerPins, g.awayPlayerPins, g.blueprint),
-		keepers:        make(map[*keeper]bool),
+		keepers:        make(map[int64]*Keeper),
 		Watchers:       make(map[*Watcher]bool),
 		Events:         make(chan GameEvent),
 		Errors:         make(chan error),
-		JoinWatcher:    make(chan *Watcher),
-		JoinKeeper:     make(chan *keeper),
-		LeaveKeeper:    make(chan *keeper),
-		LeaveWatcher:   make(chan *Watcher),
 	}
 
 	var c *clock.GameClock
 	if g.gameType == "timed" {
 		c = clock.NewGameClock(clock.Config{
-			PeriodLength: g.periodLength,
+			PeriodLength: *g.periodLength,
 			PeriodCount:  *g.periodCount,
-			OtDuration:   g.periodLength / 2,
+			OtDuration:   *g.periodLength / 2,
 		})
 	} else {
 		c = nil
 	}
 	hub.Clock = c
 
-	m.Active[g.pin] = hub
+	m.active[g.pin] = hub
 	if hub.Clock != nil {
 		go hub.PipeClockToWatchers()
 	}
 	go hub.Run()
 
 	return hub, nil
+}
+
+func (m *HubModel) WatcherJoinGame(pin string, wr http.ResponseWriter, r *http.Request) (*Watcher,
+	error) {
+	if _, ok := m.active[pin]; !ok {
+		return nil, ErrGameNotFound
+	}
+	h := m.active[pin]
+
+	conn, err := upgrader.Upgrade(wr, r, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	w := h.JoinWatcher(conn)
+	return w, nil
 }
 
 func (m *HubModel) validateGame(game *game) error {
@@ -85,8 +109,7 @@ func (m *HubModel) getGame(pin string, userID int64) (*game, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-
-	var g *game
+	var g game
 	err := m.db.QueryRowContext(ctx, stmt, pin, userID).Scan(
 		&g.pin,
 		&g.owner,
@@ -112,7 +135,7 @@ func (m *HubModel) getGame(pin string, userID int64) (*game, error) {
 	g.blueprint = stats.Simple
 	g.allowedKeepers = []int64{g.owner}
 
-	return g, nil
+	return &g, nil
 }
 
 type game struct {
@@ -125,7 +148,7 @@ type game struct {
 	gameType       string
 	awayPlayerPins []string
 	periodCount    *int64
-	periodLength   time.Duration
+	periodLength   *time.Duration
 	scoreTarget    *int64
 	teamSize       int64
 	blueprint      stats.Blueprint

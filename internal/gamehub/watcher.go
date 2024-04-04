@@ -25,9 +25,7 @@ func newWatcher(hub *Hub, conn *websocket.Conn) *Watcher {
 func (w *Watcher) WriteEvents() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
-		ticker.Stop()
-		w.Hub.LeaveWatcher <- w
-		w.Conn.Close()
+		w.Hub.LeaveWatcher(w)
 	}()
 	for {
 		select {
@@ -62,7 +60,7 @@ func (w *Watcher) WriteEvents() {
 			if err := w.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
-		case closeErr := <-w.Close:
+		case closeErr := <-w.Error:
 			closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, closeErr.Error())
 			writer, err := w.Conn.NextWriter(websocket.CloseMessage)
 			if err != nil {
