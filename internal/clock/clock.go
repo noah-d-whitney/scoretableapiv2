@@ -11,11 +11,11 @@ import (
 
 var ErrInvalidDuration = errors.New("invalid clock duration string")
 
-// ClockDuration represents a string in the format "MM:SS"
-type ClockDuration string
+// Duration represents a string in the format "MM:SS"
+type Duration string
 
 // ToDuration converts string from format "MM:SS" to a time.Duration
-func (cd ClockDuration) ToDuration() (time.Duration, error) {
+func (cd Duration) ToDuration() (time.Duration, error) {
 	strings := strings2.Split(string(cd), ":")
 	minutes, err := strconv.Atoi(strings[0])
 	if err != nil {
@@ -37,10 +37,10 @@ func (cd ClockDuration) ToDuration() (time.Duration, error) {
 	return dur, nil
 }
 
-type state int
+type State int
 
 const (
-	fresh state = iota
+	fresh State = iota
 	playing
 	paused
 	done
@@ -50,19 +50,55 @@ const (
 // GameClock keeps current game time and period. Sends string every second on C with current time
 // when GameClock is running.
 type GameClock struct {
-	current time.Duration
-	C       chan Event
-	state   state
-	period  int64
-	config  Config
-	stop    chan bool
+	current    time.Duration
+	C          chan Event
+	Controller chan Control
+	state      State
+	period     int64
+	config     Config
+	stop       chan bool
+}
+
+func (gc *GameClock) run() {
+	for {
+		select {
+		case action, ok := <-gc.Controller:
+			if !ok {
+				return
+			}
+			switch action {
+			case Play:
+				gc.Play()
+			case Pause:
+				gc.Pause()
+			case Reset:
+				gc.Reset()
+			case AddMin:
+				gc.Adjust("01:00", true)
+			case SubtractMin:
+				gc.Adjust("01:00", false)
+			case AddSec:
+				gc.Adjust("00:01", true)
+			case SubtractSec:
+				gc.Adjust("00:01", false)
+			case AddPeriod:
+				gc.ChangePeriod(1)
+			case SubtractPeriod:
+				gc.ChangePeriod(-1)
+			default:
+			}
+		}
+	}
+}
+
+func (gc *GameClock) GetState() State {
+	return gc.state
 }
 
 // Play starts game clock at current time.
 func (gc *GameClock) Play() {
 	switch gc.state {
-	case playing, done, closed:
-		return
+
 	default:
 		go func() {
 			gc.state = playing
@@ -71,7 +107,7 @@ func (gc *GameClock) Play() {
 			defer ticker.Stop()
 
 			gc.C <- Event{
-				EventType: Play,
+				EventType: Transport,
 				Value:     gc.Get(),
 			}
 
@@ -102,7 +138,7 @@ func (gc *GameClock) Pause() {
 		gc.stop <- true
 		gc.state = paused
 		gc.C <- Event{
-			EventType: Pause,
+			EventType: Transport,
 			Value:     "",
 		}
 	}
@@ -124,14 +160,14 @@ func (gc *GameClock) Reset() {
 	gc.state = fresh
 
 	gc.C <- Event{
-		EventType: Reset,
+		EventType: ClockSet,
 		Value:     gc.Get(),
 	}
 	return
 }
 
 // Set takes a ClockDuration and assigns its time.Duration as current GameClock time.
-func (gc *GameClock) Set(dur ClockDuration) {
+func (gc *GameClock) Set(dur Duration) {
 	if gc.state == playing || gc.state == closed {
 		return
 	}
@@ -144,7 +180,7 @@ func (gc *GameClock) Set(dur ClockDuration) {
 	gc.state = fresh
 
 	gc.C <- Event{
-		EventType: Set,
+		EventType: ClockSet,
 		Value:     gc.Get(),
 	}
 	return
@@ -152,7 +188,7 @@ func (gc *GameClock) Set(dur ClockDuration) {
 
 // Adjust takes a ClockDuration and bool and adds time.Duration from ClockDuration to current
 // GameClock time if bool is true, or subtracts if bool is false.
-func (gc *GameClock) Adjust(dur ClockDuration, add bool) {
+func (gc *GameClock) Adjust(dur Duration, add bool) {
 	if gc.state == playing || gc.state == closed {
 		return
 	}
@@ -169,7 +205,7 @@ func (gc *GameClock) Adjust(dur ClockDuration, add bool) {
 	gc.state = fresh
 
 	gc.C <- Event{
-		EventType: Set,
+		EventType: ClockSet,
 		Value:     gc.Get(),
 	}
 	return
@@ -214,7 +250,7 @@ func (gc *GameClock) ChangePeriod(add int64) {
 	gc.period += add
 	gc.current = gc.config.PeriodLength
 	gc.C <- Event{
-		EventType: PeriodChange,
+		EventType: PeriodSet,
 		Value:     fmt.Sprintf("%d/%d", gc.period, gc.config.PeriodCount),
 	}
 }
@@ -233,6 +269,7 @@ func (gc *GameClock) Close() {
 	}
 	defer close(gc.C)
 	defer close(gc.stop)
+	defer close(gc.Controller)
 	gc.state = closed
 }
 
@@ -253,16 +290,28 @@ type Config struct {
 	OtDuration   time.Duration
 }
 
+type Control int
+
+const (
+	Play Control = iota
+	Pause
+	Reset
+	AddMin
+	SubtractMin
+	AddSec
+	SubtractSec
+	AddPeriod
+	SubtractPeriod
+)
+
 type EventType int
 
 const (
 	Tick EventType = iota
-	Play
-	Pause
+	Transport
 	Done
-	Reset
-	Set
-	PeriodChange
+	ClockSet
+	PeriodSet
 )
 
 type Event struct {
@@ -272,13 +321,16 @@ type Event struct {
 
 func NewGameClock(cfg Config) *GameClock {
 	clock := &GameClock{
-		current: cfg.PeriodLength,
-		state:   fresh,
-		period:  1,
-		C:       make(chan Event),
-		config:  cfg,
-		stop:    make(chan bool),
+		current:    cfg.PeriodLength,
+		state:      fresh,
+		period:     1,
+		C:          make(chan Event),
+		config:     cfg,
+		stop:       make(chan bool),
+		Controller: make(chan Control),
 	}
+
+	go clock.run()
 
 	return clock
 }

@@ -21,10 +21,11 @@ type Hub struct {
 	Game           *data.Game
 	Stats          *stats.GameStatline
 	Clock          *clock.GameClock
-	keepers        map[int64]*Keeper
-	Watchers       map[*Watcher]bool
-	Events         chan GameEvent
-	Errors         chan error
+	//Plays          *PlayEngine
+	keepers  map[int64]*Keeper
+	Watchers map[*Watcher]bool
+	Events   chan GameEvent
+	Errors   chan error
 }
 
 func (h *Hub) JoinKeeper(userID int64, w http.ResponseWriter, r *http.Request) error {
@@ -33,12 +34,18 @@ func (h *Hub) JoinKeeper(userID int64, w http.ResponseWriter, r *http.Request) e
 		h.Errors <- err
 	}
 
-	k := newKeeper(userID, h, conn)
+	k := Keeper{
+		Hub:     h,
+		Conn:    conn,
+		UserID:  userID,
+		Receive: make(chan []byte),
+		Close:   make(chan bool),
+	}
 	if !slices.Contains(h.AllowedKeepers, k.UserID) {
 		return ErrKeeperNotAuthorized
 	}
 
-	h.keepers[k.UserID] = k
+	h.keepers[k.UserID] = &k
 	go k.ReadEvents()
 	go k.WriteEvents()
 
@@ -48,6 +55,8 @@ func (h *Hub) JoinKeeper(userID int64, w http.ResponseWriter, r *http.Request) e
 		"period": h.Clock.GetPeriod(),
 		"game":   h.Game,
 	})
+
+	k.Receive <- welcomeData
 
 	return nil
 }
@@ -96,7 +105,9 @@ func (h *Hub) Run() {
 			fmt.Printf("event from hub: %v", event)
 			event.execute(h)
 		case tick := <-h.Clock.C:
+			fmt.Printf("%+v\n", tick)
 			msg := h.toByteArr(envelope{"clock": tick.Value})
+			h.ToAllKeepers(msg)
 			h.ToAllWatchers(msg)
 		case err := <-h.Errors:
 			fmt.Printf("\nHUB ERROR: %s\n", err.Error())
@@ -116,6 +127,16 @@ func (h *Hub) ToAllWatchers(msg []byte) {
 		case watcher.Receive <- msg:
 		default:
 			h.LeaveWatcher(watcher)
+		}
+	}
+}
+
+func (h *Hub) ToAllKeepers(msg []byte) {
+	for i, k := range h.keepers {
+		select {
+		case k.Receive <- msg:
+		default:
+			h.LeaveKeeper(i)
 		}
 	}
 }

@@ -25,8 +25,33 @@ func (k *Keeper) WriteEvents() {
 	}()
 	for {
 		select {
+		case msg, ok := <-k.Receive:
+			_ = k.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				_ = k.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			writer, err := k.Conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				_ = k.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			_, _ = writer.Write(msg)
+
+			for i := 0; i < len(k.Receive); i++ {
+				_, _ = writer.Write(newline)
+				_, _ = writer.Write(<-k.Receive)
+			}
+
+			err = writer.Close()
+			if err != nil {
+				_ = k.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
 		case <-ticker.C:
-			k.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = k.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := k.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -36,8 +61,8 @@ func (k *Keeper) WriteEvents() {
 			if err != nil {
 				return
 			}
-			writer.Write(closeMessage)
-			writer.Close()
+			_, _ = writer.Write(closeMessage)
+			_ = writer.Close()
 			return
 		}
 	}
@@ -49,12 +74,12 @@ func (k *Keeper) ReadEvents() {
 	}()
 	for {
 		k.Conn.SetReadLimit(maxMessageSize)
-		k.Conn.SetReadDeadline(time.Now().Add(pongWait))
+		_ = k.Conn.SetReadDeadline(time.Now().Add(pongWait))
 		k.Conn.SetPongHandler(func(string) error {
-			k.Conn.SetReadDeadline(time.Now().Add(
-				pongWait))
+			_ = k.Conn.SetReadDeadline(time.Now().Add(pongWait))
 			return nil
 		})
+
 		var genericEvent GenericEvent
 		_, bytes, err := k.Conn.ReadMessage()
 		if err != nil {
@@ -62,16 +87,19 @@ func (k *Keeper) ReadEvents() {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
-			break
+			return
 		}
+
 		err = json2.Unmarshal(bytes, &genericEvent)
 		if err != nil {
 			k.Hub.Errors <- err
 		}
+
 		event, err := genericEvent.parseEvent()
 		if err != nil {
 			k.Hub.Errors <- err
 		}
+
 		k.Hub.Events <- event
 	}
 }

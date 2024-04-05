@@ -46,10 +46,11 @@ func (m *HubModel) StartGame(g *data.Game) (*Hub, error) {
 		AllowedKeepers: []int64{g.UserID},
 		Game:           g,
 		Stats:          stats.NewGameStatline(g.HomePlayerPins, g.AwayPlayerPins, stats.Simple),
-		keepers:        make(map[int64]*Keeper),
-		Watchers:       make(map[*Watcher]bool),
-		Events:         make(chan GameEvent),
-		Errors:         make(chan error),
+		//Plays:          &PlayEngine{},
+		keepers:  make(map[int64]*Keeper),
+		Watchers: make(map[*Watcher]bool),
+		Events:   make(chan GameEvent),
+		Errors:   make(chan error),
 	}
 
 	var c *clock.GameClock

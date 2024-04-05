@@ -4,7 +4,6 @@ import (
 	"ScoreTableApi/internal/clock"
 	"ScoreTableApi/internal/stats"
 	json2 "encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -62,7 +61,7 @@ func (e GenericEvent) parseEvent() (GameEvent, error) {
 		if err != nil {
 			return GameClockEvent{}, ErrEventParseFailed
 		}
-		event.Action = clock.EventType(action)
+		event.Action = clock.Control(action)
 
 		value, _ := checkAndAssertStringFromMap(e, "value")
 		if value == "" {
@@ -130,58 +129,14 @@ func (e GameStatEvent) execute(h *Hub) {
 }
 
 type GameClockEvent struct {
-	Action clock.EventType
+	Action clock.Control
 	Value  *string
 }
 
 func (e GameClockEvent) validate() error {
-	switch e.Action {
-	case clock.Play, clock.Pause, clock.Reset:
-		if e.Value != nil {
-			return errors.Join(ErrEventValidationFailed,
-				errors.New("clock event with specified action must have nil Value field"))
-		}
-		return nil
-	case clock.PeriodChange:
-		if e.Value == nil {
-			return errors.Join(ErrEventValidationFailed,
-				errors.New("clock event with specified action cannot have null Value field"))
-		}
-		if *e.Value == "+" || *e.Value == "-" {
-			return nil
-		} else {
-			return errors.Join(ErrEventValidationFailed,
-				errors.New("clock event with specified action cannot have specified Value field"))
-		}
-	case clock.Set:
-		if e.Value == nil {
-			return errors.Join(ErrEventValidationFailed,
-				errors.New("clock event with specified action cannot have null Value field"))
-		}
-		return nil
-	default:
-		return ErrEventValidationFailed
-	}
+	return nil
 }
 
 func (e GameClockEvent) execute(h *Hub) {
-	switch clock.EventType(e.Action) {
-	case clock.Play:
-		h.Clock.Play()
-	case clock.Pause:
-		h.Clock.Pause()
-	case clock.Reset:
-		h.Clock.Reset()
-	case clock.Set:
-		h.Clock.Set(clock.ClockDuration(*e.Value))
-	case clock.PeriodChange:
-		switch *e.Value {
-		case "+":
-			h.Clock.ChangePeriod(1)
-		case "-":
-			h.Clock.ChangePeriod(-1)
-		}
-	default:
-		return
-	}
+	h.Clock.Controller <- e.Action
 }
