@@ -34,6 +34,7 @@ SELECT p.id AS pin_id, p.pin, p.scope, g.id, g.user_id, g.created_at, g.version,
                     JOIN public.teams_players tp on p3.id = tp.player_id
                     JOIN public.games_teams gt2 on tp.team_id = gt2.team_id
                 WHERE gt2.game_id = g.id AND gt2.side = 0
+                ORDER BY tp.lineup_number
             ) AS home_player_pins, ARRAY(
             SELECT pin
                 FROM pins
@@ -41,6 +42,7 @@ SELECT p.id AS pin_id, p.pin, p.scope, g.id, g.user_id, g.created_at, g.version,
                     JOIN public.teams_players tp on p3.id = tp.player_id
                     JOIN public.games_teams gt2 on tp.team_id = gt2.team_id
                 WHERE gt2.game_id = g.id AND gt2.side = 1
+                ORDER BY tp.lineup_number
             ) AS away_player_pins
 FROM games g
     JOIN public.pins p on p.id = g.pin_id

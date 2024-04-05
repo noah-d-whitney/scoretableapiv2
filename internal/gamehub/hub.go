@@ -22,6 +22,8 @@ type Hub struct {
 	Stats          *stats.GameStatline
 	Clock          *clock.GameClock
 	//Plays          *PlayEngine
+	//Model for saving stats
+	Lineups  *lineupManager
 	keepers  map[int64]*Keeper
 	Watchers map[*Watcher]bool
 	Events   chan GameEvent
@@ -50,10 +52,14 @@ func (h *Hub) JoinKeeper(userID int64, w http.ResponseWriter, r *http.Request) e
 	go k.WriteEvents()
 
 	welcomeData := h.toByteArr(envelope{
-		"stats":  h.Stats.GetDto(),
-		"clock":  h.Clock.Get(),
-		"period": h.Clock.GetPeriod(),
-		"game":   h.Game,
+		"stats":    h.Stats.GetDto(),
+		"clock":    h.Clock.Get(),
+		"period":   h.Clock.GetPeriod(),
+		"game":     h.Game,
+		"timeouts": h.Clock.GetTimeouts(),
+		"active":   h.Lineups.getActive(),
+		"bench":    h.Lineups.getBench(),
+		"dnp":      h.Lineups.getDnp(),
 	})
 
 	k.Receive <- welcomeData

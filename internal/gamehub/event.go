@@ -2,6 +2,7 @@ package gamehub
 
 import (
 	"ScoreTableApi/internal/clock"
+	"ScoreTableApi/internal/data"
 	"ScoreTableApi/internal/stats"
 	json2 "encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ type GameEventType int
 const (
 	stat GameEventType = iota
 	gameClock
+	substitution
 )
 
 type GenericEvent map[string]any
@@ -75,6 +77,33 @@ func (e GenericEvent) parseEvent() (GameEvent, error) {
 			return GameClockEvent{}, ErrEventParseFailed
 		}
 		return event, nil
+	case substitution:
+		event := &GameSubstitutionEvent{}
+
+		side, err := checkAndAssertIntFromMap(e, "side")
+		if err != nil {
+			return GameSubstitutionEvent{}, ErrEventParseFailed
+		}
+		event.Side = data.GameTeamSide(side)
+
+		out, err := checkAndAssertStringFromMap(e, "out")
+		if err != nil {
+			return GameSubstitutionEvent{}, ErrEventParseFailed
+		}
+		event.Out = out
+
+		in, err := checkAndAssertStringFromMap(e, "in")
+		if err != nil {
+			return GameSubstitutionEvent{}, ErrEventParseFailed
+		}
+		event.In = in
+
+		err = event.validate()
+		if err != nil {
+			return GameSubstitutionEvent{}, ErrEventParseFailed
+		}
+
+		return event, nil
 	}
 
 	return GameStatEvent{}, nil
@@ -113,6 +142,9 @@ func (e GameStatEvent) generateClientMessage(h *Hub) ([]byte, error) {
 }
 
 func (e GameStatEvent) execute(h *Hub) {
+	if !h.Lineups.isActive(e.PlayerPin) {
+		return
+	}
 	switch e.Action {
 	case add:
 		h.Stats.Add(e.PlayerPin, e.Stat, 1)
@@ -139,4 +171,35 @@ func (e GameClockEvent) validate() error {
 
 func (e GameClockEvent) execute(h *Hub) {
 	h.Clock.Controller <- e.Action
+}
+
+type GameSubstitutionEvent struct {
+	Side data.GameTeamSide
+	In   string
+	Out  string
+}
+
+func (e GameSubstitutionEvent) validate() error {
+	if e.In == "" || e.Out == "" {
+		return ErrEventValidationFailed
+	}
+	return nil
+}
+
+func (e GameSubstitutionEvent) execute(h *Hub) {
+	if h.Clock.GetState() == clock.StatePlaying {
+		return
+	}
+
+	h.Lineups.substitution(e.Side, e.Out, e.In)
+	msg := h.toByteArr(envelope{
+		"active": h.Lineups.getActive(),
+		"bench":  h.Lineups.getBench(),
+		"Dnp":    h.Lineups.getDnp(),
+		"subs": map[string]string{
+			"out": e.Out,
+			"in":  e.In,
+		},
+	})
+	h.ToAllKeepers(msg)
 }

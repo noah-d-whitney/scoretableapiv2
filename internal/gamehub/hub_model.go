@@ -47,6 +47,7 @@ func (m *HubModel) StartGame(g *data.Game) (*Hub, error) {
 		Game:           g,
 		Stats:          stats.NewGameStatline(g.HomePlayerPins, g.AwayPlayerPins, stats.Simple),
 		//Plays:          &PlayEngine{},
+		Lineups:  newLineupManager(g),
 		keepers:  make(map[int64]*Keeper),
 		Watchers: make(map[*Watcher]bool),
 		Events:   make(chan GameEvent),
@@ -56,16 +57,14 @@ func (m *HubModel) StartGame(g *data.Game) (*Hub, error) {
 	var c *clock.GameClock
 	if g.Type == "timed" {
 		c = clock.NewGameClock(clock.Config{
-			PeriodLength: time.Duration(*g.PeriodLength),
-			PeriodCount:  *g.PeriodCount,
-			OtDuration:   time.Duration(*g.PeriodLength) / 2,
+			PeriodLength:    time.Duration(*g.PeriodLength),
+			PeriodCount:     *g.PeriodCount,
+			OtDuration:      time.Duration(*g.PeriodLength) / 2,
+			TimeoutsAllowed: 4,
+			TimeoutDuration: 20 * time.Second,
 		})
 	} else {
-		c = clock.NewGameClock(clock.Config{
-			PeriodLength: 0,
-			PeriodCount:  0,
-			OtDuration:   0,
-		})
+		c = clock.NewGameClock(clock.Config{})
 	}
 	hub.Clock = c
 
