@@ -101,6 +101,9 @@ func main() {
 
 	flag.Parse()
 
+	// REMOVE
+	cfg.cors.trustedOrigins = []string{"http://localhost:3000"}
+
 	if *displayVersion {
 		fmt.Printf("Version: %s\n", cfg.version)
 		os.Exit(0)

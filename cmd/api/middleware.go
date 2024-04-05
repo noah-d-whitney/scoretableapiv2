@@ -86,6 +86,7 @@ func (app *application) rateLimit(next http.Handler) http.Handler {
 	})
 }
 
+// TODO authenticate with cookie instead of header
 func (app *application) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Authorization")
@@ -177,6 +178,7 @@ func (app *application) enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Origin")
 		w.Header().Add("Vary", "Access-Control-Request-Method")
+		w.Header().Add("Access-Control-Allow-Credentials", "true")
 		origin := r.Header.Get("Origin")
 
 		if origin != "" {
