@@ -28,6 +28,7 @@ func (app *application) routes() http.Handler {
 	router.Post("/v1/user", app.RegisterUser)
 	router.Put("/v1/user/activate", app.ActivateUser)
 	router.Post("/v1/user/login", app.LoginUser)
+	router.With(app.requireAuthenticatedUser).Post("/v1/user/logout", app.LogoutUser)
 
 	// Player Endpoints
 	router.Route("/v1/player", func(router chi.Router) {

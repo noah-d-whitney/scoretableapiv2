@@ -201,3 +201,16 @@ func (app *application) LoginUser(w http.ResponseWriter, r *http.Request) {
 		app.serverErrorResponse(w, r, err)
 	}
 }
+
+func (app *application) LogoutUser(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:   "ScoretableAuth",
+		MaxAge: -1,
+		Path:   "/",
+	})
+
+	err := app.writeJSON(w, http.StatusOK, nil, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
