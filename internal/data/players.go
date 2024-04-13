@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/lib/pq"
 )
 
+// todo change player numbers to ptrs to allow #0
 type Player struct {
 	ID         int64     `json:"-"`
 	PinId      pins.Pin  `json:"pin"`
@@ -65,7 +68,7 @@ func (m *PlayerModel) Insert(player *Player) error {
 	}
 
 	err = tx.QueryRowContext(ctx, stmt, args...).Scan(&player.ID, &player.CreatedAt,
-		&player.Version, &player.IsActive)
+		&player.Version)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return rollbackErr
@@ -128,8 +131,53 @@ func (m *PlayerModel) Get(userId int64, pin string) (*Player, error) {
 	return &player, nil
 }
 
+func (m *PlayerModel) GetList(userID int64, pins []string) ([]*Player, error) {
+	stmt := `
+        SELECT pins.id, pins.pin, pins.scope, players.id, players.first_name, players.last_name, players.pref_number,
+            players.created_at, players.version, (
+				SELECT count(*)::int::bool
+					FROM teams_players
+					WHERE player_id = players.id)
+        FROM players
+        INNER JOIN pins ON players.pin_id = pins.id
+        WHERE players.user_id = $1 AND pins.pin = ANY($2)`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	rows, err := m.db.QueryContext(ctx, stmt, userID, pq.Array(pins))
+	if err != nil {
+		return nil, err
+	}
+
+	var players []*Player
+	for rows.Next() {
+		var player Player
+		err := rows.Scan(
+			&player.PinId.ID,
+			&player.PinId.Pin,
+			&player.PinId.Scope,
+			&player.ID,
+			&player.FirstName,
+			&player.LastName,
+			&player.PrefNumber,
+			&player.CreatedAt,
+			&player.Version,
+			&player.IsActive,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		players = append(players, &player)
+	}
+
+	return players, nil
+}
+
 func (m *PlayerModel) GetAll(userID int64, name string, filters Filters) ([]*Player, Metadata,
-	error) {
+	error,
+) {
 	stmt := fmt.Sprintf(`
 		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, players.id, players.first_name, players.last_name, 
 			players.pref_number, players.created_at, players.version, (
@@ -220,6 +268,7 @@ func (m *PlayerModel) Update(player *Player) error {
 	return nil
 }
 
+// todo fix team lineups when unassigning player from team
 func (m *PlayerModel) Delete(userID int64, pin string) error {
 	stmt := `
 		DELETE FROM players

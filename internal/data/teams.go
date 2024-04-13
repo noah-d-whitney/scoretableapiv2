@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+// todo create getPlayersForTeam function which gets players and checks conditions against
+// provided team. For instance checking if player's pref number is an active number on the team
 var (
 	ErrDuplicateTeamName = NewModelValidationErr("name", "must be unique")
 	ErrPlayerNotFound    = NewModelValidationErr("player_ids",

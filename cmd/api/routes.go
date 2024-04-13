@@ -2,8 +2,9 @@ package main
 
 import (
 	"expvar"
-	"github.com/go-chi/chi/v5"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func (app *application) routes() http.Handler {
@@ -46,6 +47,7 @@ func (app *application) routes() http.Handler {
 			})
 			router.Post("/", app.InsertPlayer)
 			router.Delete("/{id}", app.DeletePlayer)
+			router.Post("/getlist", app.GetPlayerList)
 			router.Patch("/{id}", app.UpdatePlayer)
 		})
 	})
