@@ -4,23 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/lib/pq"
 	"time"
 )
 
 func (m *GameModel) Get(userID int64, pin string) (*Game, error) {
 	stmt := `
-		SELECT pins.id, pins.pin, pins.scope, games.id, games.user_id, games.created_at, 
-			games.version, games.status, games.date_time, games.team_size, (
-				CASE WHEN games.score_target IS NULL
-					THEN 'timed'
-			    	WHEN games.score_target IS NOT NULL
-					THEN 'target'
-					ELSE ''
-				END),
-			games.period_length, games.period_count, games.score_target
-			FROM games
-			JOIN pins ON games.pin_id = pins.id
-			WHERE games.user_id = $1 AND pins.pin = $2`
+		SELECT games_view.pin_id, games_view.pin, games_view.scope, games_view.id, 
+			games_view.user_id, games_view.created_at, games_view.version, games_view.status, 
+			games_view.date_time, games_view.team_size, games_view.type, games_view.period_length, 
+			games_view.period_count, games_view.score_target, games_view.home_team_pin, 
+			games_view.away_team_pin, games_view.home_player_pins, games_view.away_player_pins
+			FROM games_view
+			WHERE user_id = $1 AND pin = $2`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -46,6 +42,10 @@ func (m *GameModel) Get(userID int64, pin string) (*Game, error) {
 		&game.PeriodLength,
 		&game.PeriodCount,
 		&game.ScoreTarget,
+		&game.HomeTeamPin,
+		&game.AwayTeamPin,
+		pq.Array(&game.HomePlayerPins),
+		pq.Array(&game.AwayPlayerPins),
 	)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {

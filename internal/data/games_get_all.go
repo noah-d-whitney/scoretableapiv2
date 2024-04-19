@@ -127,6 +127,9 @@ func (m *GameModel) GetAll(userID int64, filters GamesFilter, includes []string)
 			}
 			return nil, GamesMetadata{}, err
 		}
+		if *game.PeriodLength == 0 {
+			game.PeriodLength = nil
+		}
 		games = append(games, &game)
 	}
 

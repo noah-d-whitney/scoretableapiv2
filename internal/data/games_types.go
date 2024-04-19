@@ -9,28 +9,32 @@ import (
 	"time"
 )
 
+// TODO implement allowedkeepers table & model
+
 type Game struct {
-	ID           int64         `json:"-"`
-	UserID       int64         `json:"-"`
-	PinID        pins.Pin      `json:"pin_id"`
-	CreatedAt    time.Time     `json:"-"`
-	Version      int64         `json:"-"`
-	Status       GameStatus    `json:"status"`
-	DateTime     time.Time     `json:"date_time"`
-	TeamSize     int64         `json:"team_size"`
-	Type         GameType      `json:"type"`
-	PeriodLength *PeriodLength `json:"period_length,omitempty"`
-	PeriodCount  *int64        `json:"period_count,omitempty"`
-	ScoreTarget  *int64        `json:"score_target,omitempty"`
-	HomeTeamPin  *string       `json:"home_team_pin,omitempty"`
-	AwayTeamPin  *string       `json:"away_team_pin,omitempty"`
-	Teams        struct {
+	ID             int64         `json:"-"`
+	UserID         int64         `json:"-"`
+	PinID          pins.Pin      `json:"pin_id"`
+	CreatedAt      time.Time     `json:"-"`
+	Version        int64         `json:"-"`
+	Status         GameStatus    `json:"status"`
+	DateTime       time.Time     `json:"date_time"`
+	TeamSize       int64         `json:"team_size"`
+	Type           GameType      `json:"type"`
+	PeriodLength   *PeriodLength `json:"period_length,omitempty"`
+	PeriodCount    *int64        `json:"period_count,omitempty"`
+	ScoreTarget    *int64        `json:"score_target,omitempty"`
+	HomeTeamPin    *string       `json:"home_team_pin,omitempty"`
+	AwayTeamPin    *string       `json:"away_team_pin,omitempty"`
+	HomePlayerPins []string      `json:"-"`
+	AwayPlayerPins []string      `json:"-"`
+	Teams          struct {
 		Home *Team `json:"home,omitempty"`
 		Away *Team `json:"away,omitempty"`
 	} `json:"teams,omitempty"`
 }
 
-func (g *Game) getPlayerPins() (homeTeamPins, awayTeamPins []string) {
+func (g *Game) GetPlayerPins() (homeTeamPins, awayTeamPins []string) {
 	if g.Teams.Home == nil && g.Teams.Away == nil {
 		return nil, nil
 	}

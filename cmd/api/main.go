@@ -2,6 +2,7 @@ package main
 
 import (
 	"ScoreTableApi/internal/data"
+	"ScoreTableApi/internal/gamehub"
 	"ScoreTableApi/internal/jsonlog"
 	"ScoreTableApi/internal/mailer"
 	"context"
@@ -48,12 +49,12 @@ type config struct {
 }
 
 type application struct {
-	logger          *jsonlog.Logger
-	config          config
-	models          data.Models
-	mailer          mailer.Mailer
-	gamesInProgress map[string]*data.GameHub
-	wg              sync.WaitGroup
+	logger   *jsonlog.Logger
+	config   config
+	models   data.Models
+	gameHubs gamehub.HubModel
+	mailer   mailer.Mailer
+	wg       sync.WaitGroup
 }
 
 func main() {
@@ -72,8 +73,8 @@ func main() {
 		"PostgreSQL max connection idle time")
 
 	// Limiter Config
-	flag.Float64Var(&cfg.limiter.rps, "limiter-rps", 2, "Rate limiter maximum requests per second")
-	flag.IntVar(&cfg.limiter.burst, "limiter-burst", 4, "Rate limiter maximum burst")
+	flag.Float64Var(&cfg.limiter.rps, "limiter-rps", 5, "Rate limiter maximum requests per second")
+	flag.IntVar(&cfg.limiter.burst, "limiter-burst", 10, "Rate limiter maximum burst")
 	flag.BoolVar(&cfg.limiter.enabled, "limiter-enabled", true, "Enable rate limiter")
 
 	// SMTP Config
@@ -99,6 +100,9 @@ func main() {
 	displayVersion := flag.Bool("version", false, "Show API version and immediately exit")
 
 	flag.Parse()
+
+	// REMOVE
+	cfg.cors.trustedOrigins = []string{"http://localhost:3000"}
 
 	if *displayVersion {
 		fmt.Printf("Version: %s\n", cfg.version)
@@ -126,20 +130,22 @@ func main() {
 	}))
 
 	app := &application{
-		logger:          logger,
-		config:          cfg,
-		models:          data.NewModels(db),
-		gamesInProgress: make(map[string]*data.GameHub),
+		logger: logger,
+		config: cfg,
+		models: data.NewModels(db),
 		mailer: mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password,
 			cfg.smtp.sender),
 	}
 
-	go func() {
-		for {
-			fmt.Printf("%+v\n", app.gamesInProgress)
-			time.Sleep(3 * time.Second)
-		}
-	}()
+	hubModel := gamehub.NewModel(&app.models.Games)
+	app.gameHubs = hubModel
+
+	//go func() {
+	//	for {
+	//		fmt.Printf("%+v\n", app.gameH)
+	//		time.Sleep(3 * time.Second)
+	//	}
+	//}()
 
 	err = app.serve()
 	if err != nil {

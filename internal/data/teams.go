@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+// todo create getPlayersForTeam function which gets players and checks conditions against
+// provided team. For instance checking if player's pref number is an active number on the team
 var (
 	ErrDuplicateTeamName = NewModelValidationErr("name", "must be unique")
 	ErrPlayerNotFound    = NewModelValidationErr("player_ids",
@@ -25,6 +27,7 @@ type Team struct {
 	ID           int64          `json:"-"`
 	PinID        pins.Pin       `json:"pin"`
 	UserID       int64          `json:"-"`
+	Location     *string        `json:"location"`
 	Name         string         `json:"name"`
 	Size         int            `json:"size"`
 	CreatedAt    time.Time      `json:"-"`
@@ -61,11 +64,11 @@ func (m *TeamModel) Insert(team *Team) error {
 	team.Players = []*Player{}
 
 	stmt := `
-		INSERT INTO teams (pin_id, user_id, name)
+		INSERT INTO teams (pin_id, user_id, name, location)
 		VALUES ($1, $2, $3)
 		RETURNING id, created_at, version, is_active`
 
-	args := []any{team.PinID.ID, team.UserID, team.Name}
+	args := []any{team.PinID.ID, team.UserID, team.Name, team.Location}
 
 	err = tx.QueryRowContext(ctx, stmt, args...).Scan(
 		&team.ID,
@@ -133,7 +136,7 @@ func (m *TeamModel) Insert(team *Team) error {
 
 func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 	stmt := `
-		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name, 
+		SELECT pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.location, teams.name, 
 			teams.is_active, teams.version, teams.created_at
 		FROM teams
 		JOIN pins ON teams.pin_id = pins.id
@@ -154,6 +157,7 @@ func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 		&team.PinID.Scope,
 		&team.ID,
 		&team.UserID,
+		&team.Location,
 		&team.Name,
 		&team.IsActive,
 		&team.Version,
@@ -190,7 +194,7 @@ func (m *TeamModel) Get(userID int64, pin string) (*Team, error) {
 func (m *TeamModel) GetAll(userID int64, name string, includes []string, filters Filters) ([]*Team,
 	Metadata, error) {
 	stmt := fmt.Sprintf(`
-		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.name,  
+		SELECT count(*) OVER(), pins.id, pins.pin, pins.scope, teams.id, teams.user_id, teams.location, teams.name,  
 			teams.created_at, teams.version, teams.is_active, (
 				SELECT count(*)
 				FROM teams_players
@@ -232,6 +236,7 @@ func (m *TeamModel) GetAll(userID int64, name string, includes []string, filters
 			&team.PinID.Scope,
 			&team.ID,
 			&team.UserID,
+			&team.Location,
 			&team.Name,
 			&team.CreatedAt,
 			&team.Version,
@@ -279,7 +284,7 @@ func (m *TeamModel) Delete(userID int64, pin string) error {
 	stmt := `
 		DELETE FROM teams
 		USING pins
-		WHERE user_id = $1 AND pin = $2
+		WHERE teams.user_id = $1 AND pins.pin = $2 AND pins.id = teams.pin_id
 		RETURNING pin_id`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -291,7 +296,7 @@ func (m *TeamModel) Delete(userID int64, pin string) error {
 	}
 
 	var pinID int64
-	err = tx.QueryRowContext(ctx, stmt, pin, userID).Scan(&pinID)
+	err = tx.QueryRowContext(ctx, stmt, userID, pin).Scan(&pinID)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return rollbackErr
@@ -321,13 +326,13 @@ func (m *TeamModel) Delete(userID int64, pin string) error {
 func (m *TeamModel) Update(team *Team) error {
 	stmt := `
 		UPDATE teams
-		SET name = $1, is_active = $2, version = version + 1
-		WHERE teams.user_id = $3
-			AND teams.id = $4
-			AND teams.version = $5
+		SET location = $1, name = $2, is_active = $3, version = version + 1
+		WHERE teams.user_id = $4
+			AND teams.id = $5
+			AND teams.version = $6
 		RETURNING version`
 
-	args := []any{team.Name, team.IsActive, team.UserID, team.ID, team.Version}
+	args := []any{team.Location, team.Name, team.IsActive, team.UserID, team.ID, team.Version}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -801,4 +806,7 @@ func checkPlayerConflict(userID int64, playerPin string, tx *sql.Tx, ctx context
 func ValidateTeam(v *validator.Validator, team *Team) {
 	v.Check(team.Name != "", "name", "must be provided")
 	v.Check(len(team.Name) <= 20, "name", "must be 20 characters or less")
+	if team.Location != nil {
+		v.Check(len(*team.Location) <= 20, "location", "must be 20 characters or less")
+	}
 }

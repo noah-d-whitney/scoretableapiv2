@@ -215,53 +215,38 @@ func (app *application) StartGame(w http.ResponseWriter, r *http.Request) {
 	//userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))
 
+	g, err := app.models.Games.Get(7, pin)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.notFoundResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
+	}
+
+	h, err := app.gameHubs.StartGame(g)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
 	// Get game from db and send
 	// create game stat object and hub
 	// Accept message
 	// Update game stat in hub
 	// Send updates to all clients
 	// Send event to DB concurrently
-	hub, err := app.models.Games.Start(7, pin, app.gamesInProgress)
-
-	conn, err := upgrader.Upgrade(w, r, nil)
+	err = h.JoinKeeper(7, w, r)
 	if err != nil {
-		hub.Errors <- err
+		h.Errors <- err
 	}
-	conn.SetCloseHandler(func(code int, text string) error {
-		app.models.Games.End(pin, app.gamesInProgress)
-		return nil
-	})
-	keeper := data.Keeper{
-		Hub:    app.gamesInProgress[pin],
-		Conn:   conn,
-		UserID: 7,
-	}
-	keeper.Hub.JoinKeeper <- &keeper
-	go keeper.ReadEvents()
-	go keeper.WriteEvents()
 }
 
 func (app *application) WatchGame(w http.ResponseWriter, r *http.Request) {
 	//userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))
 
-	hub, ok := app.gamesInProgress[pin]
-	if !ok {
-		app.notFoundResponse(w, r)
-		return
-	}
-
-	conn, err := upgrader.Upgrade(w, r, nil)
+	_, err := app.gameHubs.WatcherJoinGame(pin, w, r)
 	if err != nil {
-		hub.Errors <- err
-		return
+		fmt.Printf(err.Error())
 	}
-	watcher := data.Watcher{
-		Hub:     hub,
-		Conn:    conn,
-		Receive: make(chan []byte),
-		Close:   make(chan error),
-	}
-	watcher.Hub.JoinWatcher <- &watcher
-	go watcher.WriteEvents()
 }

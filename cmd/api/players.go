@@ -5,9 +5,10 @@ import (
 	"ScoreTableApi/internal/validator"
 	"errors"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func (app *application) InsertPlayer(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +72,31 @@ func (app *application) GetPlayer(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (app *application) GetPlayerList(w http.ResponseWriter, r *http.Request) {
+	userID := app.contextGetUser(r).ID
+
+	var input struct {
+		PlayerPins []string `json:"player_pins"`
+	}
+
+	err := app.readJSON(w, r, &input)
+	if err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	players, err := app.models.Players.GetList(userID, input.PlayerPins)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	err = app.writeJSON(w, http.StatusOK, envelope{"players": players}, nil)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
+}
+
 func (app *application) DeletePlayer(w http.ResponseWriter, r *http.Request) {
 	userID := app.contextGetUser(r).ID
 	pin := strings.ToLower(chi.URLParam(r, "id"))
@@ -106,8 +132,10 @@ func (app *application) GetAllPlayers(w http.ResponseWriter, r *http.Request) {
 	input.Filters.Page = app.readInt(qs, "page", 1, v)
 	input.Filters.PageSize = app.readInt(qs, "page_size", 5, v)
 	input.Filters.Sort = app.readString(qs, "sort", "last_name")
-	input.Filters.SortSafeList = []string{"pin", "first_name", "last_name", "pref_number", "-pin",
-		"-first_name", "-last_name", "-pref_number"}
+	input.Filters.SortSafeList = []string{
+		"pin", "first_name", "last_name", "pref_number", "-pin",
+		"-first_name", "-last_name", "-pref_number",
+	}
 
 	if data.ValidateFilters(v, input.Filters); !v.Valid() {
 		app.failedValidationResponse(w, r, v.Errors)

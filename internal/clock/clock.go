@@ -1,6 +1,7 @@
 package clock
 
 import (
+	"ScoreTableApi/internal/data"
 	"errors"
 	"fmt"
 	"math"
@@ -11,11 +12,11 @@ import (
 
 var ErrInvalidDuration = errors.New("invalid clock duration string")
 
-// ClockDuration represents a string in the format "MM:SS"
-type ClockDuration string
+// Duration represents a string in the format "MM:SS"
+type Duration string
 
 // ToDuration converts string from format "MM:SS" to a time.Duration
-func (cd ClockDuration) ToDuration() (time.Duration, error) {
+func (cd Duration) ToDuration() (time.Duration, error) {
 	strings := strings2.Split(string(cd), ":")
 	minutes, err := strconv.Atoi(strings[0])
 	if err != nil {
@@ -37,41 +38,158 @@ func (cd ClockDuration) ToDuration() (time.Duration, error) {
 	return dur, nil
 }
 
-type state int
+type State int
 
 const (
-	fresh state = iota
-	playing
-	paused
-	done
-	closed
+	StateFresh State = iota
+	StatePlaying
+	StatePaused
+	StateDone
+	StateClosed
+	StateTimeout
 )
 
 // GameClock keeps current game time and period. Sends string every second on C with current time
 // when GameClock is running.
 type GameClock struct {
-	current time.Duration
-	C       chan Event
-	state   state
-	period  int64
-	config  Config
-	stop    chan bool
+	current    time.Duration
+	toCurrent  time.Duration
+	C          chan Event
+	Controller chan Control
+	state      State
+	period     int64
+	config     Config
+	stop       chan bool
+	homeTOs    int
+	awayTOs    int
 }
 
-// Play starts game clock at current time.
-func (gc *GameClock) Play() {
+func (gc *GameClock) run() {
+	for {
+		select {
+		case action, ok := <-gc.Controller:
+			if !ok {
+				return
+			}
+			switch action {
+			case Play:
+				gc.Play()
+			case Pause:
+				gc.Pause()
+			case Reset:
+				gc.Reset()
+			case AddMin:
+				gc.Adjust("01:00", true)
+			case SubtractMin:
+				gc.Adjust("01:00", false)
+			case AddSec:
+				gc.Adjust("00:01", true)
+			case SubtractSec:
+				gc.Adjust("00:01", false)
+			case AddPeriod:
+				gc.ChangePeriod(1)
+			case SubtractPeriod:
+				gc.ChangePeriod(-1)
+			case CallTimeoutHome:
+				gc.Timeout(data.TeamHome)
+			case CallTimeoutAway:
+				gc.Timeout(data.TeamAway)
+			case EndTimeout:
+				gc.Controller <- EndTimeout
+			default:
+			}
+		}
+	}
+}
+
+func (gc *GameClock) GetState() State {
+	return gc.state
+}
+
+func (gc *GameClock) Timeout(side data.GameTeamSide) {
 	switch gc.state {
-	case playing, done, closed:
+	case StateClosed:
 		return
 	default:
-		go func() {
-			gc.state = playing
+		gc.stop <- true
+		timeoutRoutine := func() {
+			gc.state = StateTimeout
 
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
 
 			gc.C <- Event{
-				EventType: Play,
+				EventType: Timeout,
+				Value:     gc.Get(),
+			}
+
+			for {
+				select {
+				case control := <-gc.Controller:
+					if control == EndTimeout {
+						gc.state = StatePaused
+						gc.toCurrent = gc.config.TimeoutDuration
+						gc.C <- Event{
+							EventType: TimeoutDone,
+							Value:     gc.Get(),
+						}
+						return
+					}
+				case <-ticker.C:
+					gc.toCurrent -= time.Second
+					if gc.toCurrent > 0 {
+						gc.C <- Event{
+							EventType: Tick,
+							Value:     gc.Get(),
+						}
+					} else {
+						go gc.done()
+						return
+					}
+
+				}
+			}
+		}
+		switch side {
+		case data.TeamHome:
+			if gc.homeTOs < gc.config.TimeoutsAllowed {
+				gc.homeTOs++
+				go timeoutRoutine()
+				return
+			}
+		case data.TeamAway:
+			if gc.awayTOs < gc.config.TimeoutsAllowed {
+				gc.awayTOs++
+				go timeoutRoutine()
+				return
+			}
+		}
+
+	}
+}
+
+func (gc *GameClock) GetTimeouts() map[string]int {
+	return map[string]int{
+		"home":    gc.homeTOs,
+		"away":    gc.awayTOs,
+		"allowed": gc.config.TimeoutsAllowed,
+	}
+}
+
+// Play starts game clock at current time.
+func (gc *GameClock) Play() {
+	switch gc.state {
+	case StatePlaying, StateDone, StateClosed:
+		return
+	default:
+		go func() {
+			gc.state = StatePlaying
+
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+
+			gc.C <- Event{
+				EventType: Transport,
 				Value:     gc.Get(),
 			}
 
@@ -96,13 +214,13 @@ func (gc *GameClock) Play() {
 	}
 }
 
-// Pause will pause GameClock if in playing state.
+// Pause will pause GameClock if in StatePlaying state.
 func (gc *GameClock) Pause() {
-	if gc.state == playing {
+	if gc.state == StatePlaying {
 		gc.stop <- true
-		gc.state = paused
+		gc.state = StatePaused
 		gc.C <- Event{
-			EventType: Pause,
+			EventType: Transport,
 			Value:     "",
 		}
 	}
@@ -111,9 +229,9 @@ func (gc *GameClock) Pause() {
 
 // Reset sets current clock duration to PeriodLength in cfg,
 // or OtDuration if period is greater than PeriodCount in cfg.
-// Will return with no action if GameClock state is playing.
+// Will return with no action if GameClock state is StatePlaying.
 func (gc *GameClock) Reset() {
-	if gc.state == playing || gc.state == closed {
+	if gc.state == StatePlaying || gc.state == StateClosed {
 		return
 	}
 	if gc.period <= gc.config.PeriodCount {
@@ -121,18 +239,18 @@ func (gc *GameClock) Reset() {
 	} else {
 		gc.current = gc.config.OtDuration
 	}
-	gc.state = fresh
+	gc.state = StateFresh
 
 	gc.C <- Event{
-		EventType: Reset,
+		EventType: ClockSet,
 		Value:     gc.Get(),
 	}
 	return
 }
 
 // Set takes a ClockDuration and assigns its time.Duration as current GameClock time.
-func (gc *GameClock) Set(dur ClockDuration) {
-	if gc.state == playing || gc.state == closed {
+func (gc *GameClock) Set(dur Duration) {
+	if gc.state == StatePlaying || gc.state == StateClosed {
 		return
 	}
 	duration, err := dur.ToDuration()
@@ -141,10 +259,10 @@ func (gc *GameClock) Set(dur ClockDuration) {
 	}
 
 	gc.current = duration
-	gc.state = fresh
+	gc.state = StateFresh
 
 	gc.C <- Event{
-		EventType: Set,
+		EventType: ClockSet,
 		Value:     gc.Get(),
 	}
 	return
@@ -152,8 +270,8 @@ func (gc *GameClock) Set(dur ClockDuration) {
 
 // Adjust takes a ClockDuration and bool and adds time.Duration from ClockDuration to current
 // GameClock time if bool is true, or subtracts if bool is false.
-func (gc *GameClock) Adjust(dur ClockDuration, add bool) {
-	if gc.state == playing || gc.state == closed {
+func (gc *GameClock) Adjust(dur Duration, add bool) {
+	if gc.state == StatePlaying || gc.state == StateClosed {
 		return
 	}
 	duration, err := dur.ToDuration()
@@ -166,10 +284,10 @@ func (gc *GameClock) Adjust(dur ClockDuration, add bool) {
 	} else {
 		gc.current -= duration
 	}
-	gc.state = fresh
+	gc.state = StateFresh
 
 	gc.C <- Event{
-		EventType: Set,
+		EventType: ClockSet,
 		Value:     gc.Get(),
 	}
 	return
@@ -177,13 +295,20 @@ func (gc *GameClock) Adjust(dur ClockDuration, add bool) {
 
 // Get returns a string in format of "MM:SS" with current GameClock time
 func (gc *GameClock) Get() string {
-	if gc.state == closed {
+	if gc.state == StateClosed {
 		return ""
 	}
 
-	mins := int(math.Floor(gc.current.Minutes()))
+	var current time.Duration
+	if gc.state == StateTimeout {
+		current = gc.toCurrent
+	} else {
+		current = gc.current
+	}
+
+	mins := int(math.Floor(current.Minutes()))
 	minsDuration := time.Duration(mins) * time.Minute
-	secs := int(math.Round((gc.current - minsDuration).Seconds()))
+	secs := int(math.Round((current - minsDuration).Seconds()))
 	var padMin string
 	var padSec string
 	switch {
@@ -203,9 +328,9 @@ func (gc *GameClock) Get() string {
 }
 
 // ChangePeriod sets the current GameClock period.
-// Period can only be changed on a GameClock with fresh or done state
+// Period can only be changed on a GameClock with StateFresh or StateDone state
 func (gc *GameClock) ChangePeriod(add int64) {
-	if gc.state == playing || gc.state == paused || gc.state == closed {
+	if gc.state == StatePlaying || gc.state == StatePaused || gc.state == StateClosed {
 		return
 	}
 	if gc.period+add <= 0 {
@@ -214,32 +339,42 @@ func (gc *GameClock) ChangePeriod(add int64) {
 	gc.period += add
 	gc.current = gc.config.PeriodLength
 	gc.C <- Event{
-		EventType: PeriodChange,
+		EventType: PeriodSet,
 		Value:     fmt.Sprintf("%d/%d", gc.period, gc.config.PeriodCount),
 	}
 }
 
 // GetPeriod returns current GameClock period.
 func (gc *GameClock) GetPeriod() int64 {
-	if gc.state == playing {
+	if gc.state == StatePlaying {
 		return 0
 	}
 	return gc.period
 }
 
 func (gc *GameClock) Close() {
-	if gc.state == playing {
+	if gc.state == StatePlaying {
 		return
 	}
 	defer close(gc.C)
 	defer close(gc.stop)
-	gc.state = closed
+	defer close(gc.Controller)
+	gc.state = StateClosed
 }
 
-// done is called when GameClock current is 0 or less.
+// StateDone is called when GameClock current is 0 or less.
 func (gc *GameClock) done() {
+	if gc.current > 0 {
+		gc.state = StatePaused
+		gc.toCurrent = gc.config.TimeoutDuration
+		gc.C <- Event{
+			EventType: TimeoutDone,
+			Value:     gc.Get(),
+		}
+		return // Will be greater than 0 if StateTimeout timer was used
+	}
 	gc.current = 0
-	gc.state = done
+	gc.state = StateDone
 	gc.C <- Event{
 		EventType: Done,
 		Value:     "",
@@ -248,21 +383,40 @@ func (gc *GameClock) done() {
 }
 
 type Config struct {
-	PeriodLength time.Duration
-	PeriodCount  int64
-	OtDuration   time.Duration
+	PeriodLength    time.Duration
+	PeriodCount     int64
+	OtDuration      time.Duration
+	TimeoutDuration time.Duration
+	TimeoutsAllowed int
 }
+
+type Control int
+
+const (
+	Play Control = iota
+	Pause
+	Reset
+	AddMin
+	SubtractMin
+	AddSec
+	SubtractSec
+	AddPeriod
+	SubtractPeriod
+	CallTimeoutHome
+	CallTimeoutAway
+	EndTimeout
+)
 
 type EventType int
 
 const (
 	Tick EventType = iota
-	Play
-	Pause
+	Transport
 	Done
-	Reset
-	Set
-	PeriodChange
+	ClockSet
+	PeriodSet
+	Timeout
+	TimeoutDone
 )
 
 type Event struct {
@@ -272,13 +426,19 @@ type Event struct {
 
 func NewGameClock(cfg Config) *GameClock {
 	clock := &GameClock{
-		current: cfg.PeriodLength,
-		state:   fresh,
-		period:  1,
-		C:       make(chan Event),
-		config:  cfg,
-		stop:    make(chan bool),
+		current:    cfg.PeriodLength,
+		toCurrent:  cfg.TimeoutDuration,
+		state:      StateFresh,
+		period:     1,
+		C:          make(chan Event),
+		config:     cfg,
+		stop:       make(chan bool),
+		Controller: make(chan Control),
+		homeTOs:    0,
+		awayTOs:    0,
 	}
+
+	go clock.run()
 
 	return clock
 }

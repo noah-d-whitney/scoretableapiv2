@@ -121,3 +121,25 @@ func (m *GameModel) Update(game *Game) error {
 
 	return nil
 }
+
+func (m *GameModel) StartGameInDB(g *Game) error {
+	stmt := `
+		UPDATE games
+		SET status = $1, version = version + 1
+		WHERE user_id = $2 AND id = $3 AND version = $4`
+
+	args := []any{INPROGRESS, g.UserID, g.ID, g.Version}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := m.db.ExecContext(ctx, stmt, args...)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrEditConflict
+		}
+	}
+
+	return nil
+}

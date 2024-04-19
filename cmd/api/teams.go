@@ -14,6 +14,7 @@ import (
 func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Name         string         `json:"name"`
+		Location     *string         `json:"location"`
 		PlayerIDs    []string       `json:"player_ids"`
 		PlayerNums   map[string]int `json:"player_nums"`
 		PlayerLineup []string       `json:"player_lineup"`
@@ -27,6 +28,7 @@ func (app *application) InsertTeam(w http.ResponseWriter, r *http.Request) {
 
 	team := &data.Team{
 		Name:         input.Name,
+		Location:     input.Location,
 		PlayerIDs:    input.PlayerIDs,
 		PlayerNums:   input.PlayerNums,
 		PlayerLineup: input.PlayerLineup,
