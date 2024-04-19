@@ -1,0 +1,13 @@
+{
+    "connections": [
+        {
+            "name": "scoretable_psql",
+            "adapter": "postgres",
+            "host": "localhost",
+            "port": 5432,
+            "user": "scoretable",
+            "password": "Noah2002ndw",
+            "database": "scoretable"
+        }
+    ]
+}
