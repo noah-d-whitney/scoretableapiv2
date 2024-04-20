@@ -34,7 +34,3 @@ type StaticPhotoStore struct {
 func (s *StaticPhotoStore) Store(img *Photo) (string, error) {
 	return "", nil
 }
-
-// DB table for photo url and storage method
-// PhotoStores for static images
-// Send photo url to client on unmarshall json
