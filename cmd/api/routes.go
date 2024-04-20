@@ -1,6 +1,8 @@
 package main
 
 import (
+	"ScoreTableApi/internal/photos"
+	"embed"
 	"expvar"
 	"net/http"
 
@@ -24,6 +26,9 @@ func (app *application) routes() http.Handler {
 	// Healthcheck
 	router.Get("/v1/healthcheck", app.HealthCheck)
 	router.Method(http.MethodGet, "/v1/metrics", expvar.Handler())
+
+	// Static FS
+	router.Handle("/static", photos.StaticPhotosFS)
 
 	// User Endpoints
 	router.Post("/v1/user", app.RegisterUser)
