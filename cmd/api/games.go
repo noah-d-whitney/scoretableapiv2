@@ -5,12 +5,13 @@ import (
 	"ScoreTableApi/internal/validator"
 	"errors"
 	"fmt"
-	"github.com/go-chi/chi/v5"
-	"github.com/gorilla/websocket"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
 )
 
 func (app *application) InsertGame(w http.ResponseWriter, r *http.Request) {

@@ -12,6 +12,7 @@ var (
 	PinScopeTeams   = "teams"
 	PinScopePlayers = "players"
 	PinScopeGames   = "games"
+	PinScopeLeagues = "leagues"
 )
 
 type Pin struct {

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// TODO implement allowedkeepers table & model
+// TODO: implement allowedkeepers table & model
 
 type Game struct {
 	ID             int64         `json:"-"`

@@ -109,7 +109,7 @@ func (e GenericEvent) parseEvent() (GameEvent, error) {
 	return GameStatEvent{}, nil
 }
 
-// TODO make anonymous event to return that executes and sends problems
+// TODO: make anonymous event to return that executes and sends problems
 
 type GameStatEvent struct {
 	PlayerPin string

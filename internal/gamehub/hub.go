@@ -7,9 +7,11 @@ import (
 	json2 "encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"net/http"
 	"slices"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 var (
@@ -76,7 +78,7 @@ func (h *Hub) LeaveKeeper(userID int64) {
 	}
 }
 
-// TODO make JoinWatcher receive w and r instead of conn
+// TODO: make JoinWatcher receive w and r instead of conn
 
 func (h *Hub) JoinWatcher(conn *websocket.Conn) *Watcher {
 	w := newWatcher(h, conn)
@@ -102,9 +104,11 @@ func (h *Hub) LeaveWatcher(w *Watcher) {
 	}
 }
 
-// TODO pass in blueprint on create statline, send out list of possible stats to Keeper and client
+// TODO: pass in blueprint on create statline, send out list of possible stats to Keeper and client
 
 func (h *Hub) Run() {
+	msgTicker := time.NewTicker(5 * time.Second)
+	defer msgTicker.Stop()
 	for {
 		select {
 		case event := <-h.Events:
@@ -114,6 +118,12 @@ func (h *Hub) Run() {
 			fmt.Printf("%+v\n", tick)
 			msg := h.toByteArr(envelope{"clock": tick.Value})
 			h.ToAllKeepers(msg)
+		case <-msgTicker.C:
+			msg := h.toByteArr(envelope{
+				"clock":  h.Clock.Get(),
+				"stats":  h.Stats.GetDto(),
+				"lineup": h.Lineups.getActive(),
+			})
 			h.ToAllWatchers(msg)
 		case err := <-h.Errors:
 			fmt.Printf("\nHUB ERROR: %s\n", err.Error())
